@@ -1,0 +1,22 @@
+from rest_framework import viewsets
+from rest_framework.response import Response
+from .models import ProjectGroup, List
+
+class ProjectGroupViewSet(viewsets.ModelViewSet):
+    queryset = ProjectGroup.objects.all()
+    # serializer class would be defined here
+    
+    def create(self, request):
+        # Create a new project group
+        pass
+        
+    def update(self, request, pk=None):
+        # Update a project group (including collapse state)
+        pass
+
+class ListViewSet(viewsets.ModelViewSet):
+    queryset = List.objects.all()
+    
+    def update(self, request, pk=None):
+        # Handle moving lists in/out of folders and reordering
+        pass

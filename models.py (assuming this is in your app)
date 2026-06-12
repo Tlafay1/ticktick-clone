@@ -1,0 +1,21 @@
+from django.db import models
+
+class ProjectGroup(models.Model):
+    name = models.CharField(max_length=255)
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    collapsed = models.BooleanField(default=False)
+    sort_order = models.IntegerField(default=0)
+
+class List(models.Model):
+    name = models.CharField(max_length=255)
+    user = models.ForeignKey('accounts.User', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    group = models.ForeignKey(ProjectGroup, null=True, blank=True, on_delete=models.SET_NULL)
+    sort_order = models.IntegerField(default=0)
+    color = models.CharField(max_length=10, null=True, blank=True)
+    icon = models.CharField(max_length=50, null=True, blank=True)
+    view_mode = models.CharField(max_length=20, default='list')
+    archived = models.BooleanField(default=False)
