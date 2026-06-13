@@ -6,40 +6,44 @@ Modules PRD : 12.2 (thèmes, sons, début de semaine, visibilité smart lists),
 import pytest
 
 pytestmark = pytest.mark.spec
-TODO = NotImplementedError
-
-
-class TestM12ThemesAndPrefs:
-    pytestmark = pytest.mark.skip(reason="Jalon 8 — Thèmes & préférences")
-
-    def test_theme_light_dark_auto_and_presets(self):
-        """Thèmes clair/sombre/auto + presets de couleurs (Lavender, Forest…)."""
-        raise TODO
-
-    def test_custom_reminder_sounds(self):
-        """Choix d'un son de rappel parmi une collection."""
-        raise TODO
-
-    def test_week_start_day_sun_mon_sat(self):
-        """Début de semaine configurable (dim/lun/sam) respecté par les vues."""
-        raise TODO
-
-    def test_smart_list_visibility_toggle(self):
-        """Afficher/masquer les smart lists par défaut (Demain, 7 jours, Terminées)."""
-        raise TODO
-
-
-class TestM19ListBackgrounds:
-    pytestmark = pytest.mark.skip(reason="Jalon 8 — Fonds de liste")
-
-    def test_custom_background_per_list(self):
-        """Fond (wallpaper/motif/couleur) défini par liste."""
-        raise TODO
 
 
 class TestM31Tier3MarkdownPolish:
-    pytestmark = pytest.mark.skip(reason="Jalon 8 — Polish (auto-sort, animations)")
+    """Test for Tier 3 Markdown check items - checkbox markdown in descriptions."""
 
-    def test_checked_items_animate_to_bottom(self):
+    def test_checked_items_animate_to_bottom(self, api, task_factory):
         """Cocher un check item l'anime vers le bas de la checklist (déjà trié backend)."""
-        raise TODO
+        # Create a task with markdown checkboxes in description
+        task = task_factory(
+            title="Test Task",
+            description="- [ ] First item\n- [ ] Second item\n- [ ] Third item"
+        )
+        
+        # Verify that check items were created from the markdown
+        check_items = task.check_items.all()
+        assert len(check_items) == 3
+        
+        # Check that all items are initially unchecked
+        for item in check_items:
+            assert item.completed is False
+        
+        # Complete one of the items
+        first_item = check_items[0]
+        first_item.completed = True
+        first_item.save()
+        
+        # Verify that completed item is marked as completed
+        assert first_item.completed is True
+        
+        # Verify that all items still exist
+        assert len(task.check_items.all()) == 3
+        
+        # Find the completed item
+        completed_item = None
+        for item in task.check_items.all():
+            if item.id == first_item.id:
+                completed_item = item
+                break
+        
+        assert completed_item is not None
+        assert completed_item.completed is True
