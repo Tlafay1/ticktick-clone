@@ -1,23 +1,21 @@
 from rest_framework import serializers
-
 from .models import Tag
 
 
 class TagSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tag
-        fields = ["id", "name", "color", "parent", "sort_order"]
+        fields = '__all__'
+        read_only_fields = ('user',)
 
     def validate_parent(self, parent):
-        if parent and parent.user != self.context["request"].user:
-            raise serializers.ValidationError("Tag parent inconnu.")
+        """Ensure parent tag belongs to the same user."""
+        if parent and parent.user != self.context['request'].user:
+            raise serializers.ValidationError("Parent tag must belong to the same user.")
         return parent
 
     def validate_name(self, name):
-        name = name.strip().lstrip("#")
-        existing = Tag.objects.filter(user=self.context["request"].user, name=name)
-        if self.instance:
-            existing = existing.exclude(pk=self.instance.pk)
-        if existing.exists():
-            raise serializers.ValidationError("Un tag porte déjà ce nom.")
+        """Ensure tag name is not empty."""
+        if not name or not name.strip():
+            raise serializers.ValidationError("Tag name cannot be empty.")
         return name
