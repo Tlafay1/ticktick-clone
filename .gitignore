@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Django
+backend/media/
+backend/staticfiles/
+*.sqlite3
+
+# Node
+node_modules/
+dist/
+.vite/
+*.local
+
+# Capacitor / Android
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/android/build/
+mobile/android/local.properties
+
+# Electron
+desktop/out/
+desktop/release/
+
+# Env & IDE
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+*.log
+
+# aider (agent local) — la config (.aider.conf.yml, .aider.model.settings.yml)
+# est versionnée ; seuls les caches/historiques sont ignorés.
+.aider.tags.cache.v*/
+.aider.chat.history.md
+.aider.input.history
+.aider.llm.history

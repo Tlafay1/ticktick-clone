@@ -1,0 +1,147 @@
+/* Design tokens — palette calquée sur TickTick. */
+:root {
+  --primary: #4772fa;
+  --primary-hover: #3a63e0;
+  --primary-soft: #eef3fe;
+
+  /* Priorités TickTick : haute=rouge, moyenne=jaune, basse=bleu, aucune=gris */
+  --prio-high: #e0383e;
+  --prio-medium: #fab005;
+  --prio-low: #4772fa;
+  --prio-none: #a5a5a5;
+
+  --bg: #ffffff;
+  --bg-sidebar: #f6f7f9;
+  --bg-hover: #f2f3f5;
+  --bg-active: #eaf0ff;
+  --border: #e7e8ea;
+  --text: #202329;
+  --text-secondary: #6b6f76;
+  --text-muted: #a3a7ad;
+  --danger: #e0383e;
+  --radius: 8px;
+  --sidebar-width: 240px;
+  --detail-width: 360px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+}
+
+input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+a { color: var(--primary); text-decoration: none; }
+
+::placeholder { color: var(--text-muted); }
+
+/* Utilitaires */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+}
+.icon-btn:hover { background: var(--bg-hover); }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  font-weight: 500;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-ghost { color: var(--text-secondary); }
+.btn-ghost:hover { background: var(--bg-hover); }
+
+/* Menu contextuel / dropdown */
+.menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  padding: 5px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--text);
+}
+.menu-item:hover { background: var(--bg-hover); }
+.menu-item.danger { color: var(--danger); }
+.menu-sep { height: 1px; background: var(--border); margin: 5px 8px; }
+.menu-label {
+  padding: 6px 10px 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+/* Checkbox de tâche (rond TickTick = carré arrondi) */
+.task-checkbox {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--prio-none);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  transition: background 0.15s;
+}
+.task-checkbox.p1 { border-color: var(--prio-low); }
+.task-checkbox.p3 { border-color: var(--prio-medium); }
+.task-checkbox.p5 { border-color: var(--prio-high); }
+.task-checkbox.checked { background: var(--text-muted); border-color: var(--text-muted); }
+.task-checkbox.checked svg { color: #fff; }
+.task-checkbox.wontdo { background: var(--text-muted); border-color: var(--text-muted); }
+
+/* Markdown rendu */
+.md-body { line-height: 1.6; word-wrap: break-word; }
+.md-body h1 { font-size: 1.4em; } .md-body h2 { font-size: 1.2em; } .md-body h3 { font-size: 1.05em; }
+.md-body pre { background: #f6f8fa; padding: 10px; border-radius: 8px; overflow-x: auto; }
+.md-body code { background: #f0f1f3; border-radius: 4px; padding: 1px 5px; font-size: 0.9em; }
+.md-body pre code { background: none; padding: 0; }
+.md-body blockquote { border-left: 3px solid var(--border); margin-left: 0; padding-left: 12px; color: var(--text-secondary); }
+.md-body img { max-width: 100%; border-radius: 8px; }
+.md-body ul.contains-task-list { list-style: none; padding-left: 4px; }
+.md-body input[type='checkbox'] { accent-color: var(--primary); margin-right: 6px; }

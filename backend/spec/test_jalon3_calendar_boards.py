@@ -220,19 +220,19 @@ class TestM30TimelineSlotHiding:
         assert task['due_date'] is not None
         
         # Get user settings to check if we can set hidden hours
-        settings_response = api.get('/api/settings/')
+        settings_response = api.get('/api/me/settings/')
         settings = settings_response.json()
-        
+
         # Set hidden hours (00h-7h)
         updated_settings = {
             'hidden_hours_start': 0,
             'hidden_hours_end': 7
         }
-        update_response = api.patch('/api/settings/', updated_settings)
+        update_response = api.patch('/api/me/settings/', updated_settings)
         assert update_response.status_code == 200
-        
+
         # Verify settings were updated
-        updated_settings_response = api.get('/api/settings/')
+        updated_settings_response = api.get('/api/me/settings/')
         updated_settings_data = updated_settings_response.json()
         assert updated_settings_data['hidden_hours_start'] == 0
         assert updated_settings_data['hidden_hours_end'] == 7

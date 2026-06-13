@@ -1,46 +1,37 @@
+from django.conf import settings
 from django.db import models
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
 
 
 class Tag(models.Model):
     """Tag hiérarchique (module 3). Le renommage se propage naturellement
     aux enfants via `parent`."""
-    
-    name = models.CharField(max_length=255)
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.CASCADE)
-    
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tags"
+    )
+    name = models.CharField(max_length=120)
+    color = models.CharField(max_length=16, blank=True)
+    sort_order = models.BigIntegerField(default=0)
+    parent = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="children"
+    )
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(fields=("user", "name"), name="unique_tag_name")
+        ]
+
     def __str__(self):
         return self.name
 
     def merge_into(self, target):
-        """Fusionne ce tag avec un autre (déplace les enfants et les tâches)."""
-        # Move children to target
-        for child in Tag.objects.filter(parent=self):
-            child.parent = target
-            child.save()
-        
-        # Move tasks that had this tag or any of its descendants to the target tag
+        """Fusionne ce tag dans target : déplace enfants + tâches, puis supprime."""
+        Tag.objects.filter(parent=self).update(parent=target)
+
         from apps.tasks.models import Task
-        
-        # Get all descendant tags including self
-        descendant_tags = []
-        queue = [self]
-        
-        while queue:
-            current = queue.pop(0)
-            descendant_tags.append(current)
-            children = Tag.objects.filter(parent=current)
-            queue.extend(children)
-        
-        descendant_ids = [tag.id for tag in descendant_tags]
-        
-        # Move tasks that had any of the descendant tags to target
-        for task in Task.objects.filter(tags__in=descendant_ids):
-            task.tags.remove(*Tag.objects.filter(id__in=descendant_ids))
+        for task in Task.objects.filter(tags=self):
+            task.tags.remove(self)
             task.tags.add(target)
-        
-        # Delete this tag
+
         self.delete()

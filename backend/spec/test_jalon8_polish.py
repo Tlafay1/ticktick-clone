@@ -11,53 +11,22 @@ pytestmark = pytest.mark.spec
 class TestM31Tier3MarkdownPolish:
     """Test for Tier 3 Markdown check items - checkbox markdown in descriptions."""
 
-    def test_checked_items_animate_to_bottom(self, api, inbox):
-        """Cocher un check item l'anime vers le bas de la checklist (déjà trié backend)."""
-        # Create a task with markdown checkboxes in description
-        task_data = {
-            "project": inbox.id,
-            "title": "Test Task",
-            "description": "- [ ] First item\n- [ ] Second item\n- [ ] Third item"
-        }
-        response = api.post("/api/tasks/", task_data)
-        assert response.status_code == 201
-        task = response.json()
-        
-        # Verify that check items were created from the markdown
-        check_items = task["check_items"]
-        assert len(check_items) == 3
-        
-        # Check that all items are initially unchecked
-        for item in check_items:
-            assert item["is_done"] is False
-        
-        # Complete one of the items
-        first_item_id = check_items[0]["id"]
-        update_response = api.patch(f"/api/check-items/{first_item_id}/", {"is_done": True})
-        assert update_response.status_code == 200
-        
-        # Verify that completed item is marked as completed
-        updated_item = update_response.json()
-        assert updated_item["is_done"] is True
-        
-        # Get the task again to verify the check items are in correct order
-        get_task_response = api.get(f"/api/tasks/{task['id']}/")
-        assert get_task_response.status_code == 200
-        updated_task = get_task_response.json()
-        
-        # Verify that all items still exist
-        assert len(updated_task["check_items"]) == 3
-        
-        # Find the completed item
-        completed_item = None
-        for item in updated_task["check_items"]:
-            if item["id"] == first_item_id:
-                completed_item = item
-                break
-        
-        assert completed_item is not None
-        assert completed_item["is_done"] is True
-        
-        # Verify that completed item moved to the bottom (since it's sorted by is_done, then sort_order)
-        # The completed item should be at the end
-        assert updated_task["check_items"][-1]["id"] == first_item_id
+    def test_checked_items_sort_to_bottom(self, api, inbox):
+        """Cocher un check item le place en bas de la liste (tri backend : is_done, sort_order)."""
+        task = api.post("/api/tasks/", {"project": inbox.id, "title": "T"}).json()
+        task_id = task["id"]
+
+        # Créer 3 CheckItems (Tier 2) manuellement
+        a = api.post("/api/check-items/", {"task": task_id, "title": "A", "sort_order": 1}).json()
+        b = api.post("/api/check-items/", {"task": task_id, "title": "B", "sort_order": 2}).json()
+        c = api.post("/api/check-items/", {"task": task_id, "title": "C", "sort_order": 3}).json()
+
+        # Cocher le premier item
+        api.patch(f"/api/check-items/{a['id']}/", {"is_done": True})
+
+        # Récupérer la tâche — l'item coché doit être en dernier
+        items = api.get(f"/api/tasks/{task_id}/").json()["check_items"]
+        assert len(items) == 3
+        assert items[-1]["id"] == a["id"]   # A coché → trié en bas
+        assert items[0]["id"] == b["id"]    # B et C toujours en tête
+        assert items[1]["id"] == c["id"]

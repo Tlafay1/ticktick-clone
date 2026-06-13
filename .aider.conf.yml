@@ -1,0 +1,17 @@
+# Configuration aider — agent de code local (voir docs/local-agent-setup.md).
+# L'endpoint Ollama (OLLAMA_API_BASE) est fourni par scripts/aider.sh.
+
+model: ollama_chat/qwen3-coder:30b
+
+# Done-gate : pytest + build web + vitest. aider itère dessus avec --auto-test.
+test-cmd: ./scripts/done-gate.sh
+
+# aider commit chaque édition (historique git granulaire, facile à revert).
+auto-commits: true
+
+# On gère nous-mêmes le .gitignore (pour versionner cette config).
+gitignore: false
+
+# Lint Python après édition.
+lint-cmd:
+  - "python: cd backend && uv run python -m compileall -q ."

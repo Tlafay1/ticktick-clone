@@ -1,0 +1,44 @@
+import { describe, expect, it } from 'vitest'
+import { dueLabel, dueTone, postponeTarget } from '../dates'
+
+const day = (y: number, m: number, d: number, h = 0, min = 0) =>
+  new Date(y, m, d, h, min).toISOString()
+
+describe('dueLabel', () => {
+  it('affiche l\'heure quand la tâche n\'est pas all-day', () => {
+    const today = new Date()
+    const iso = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 14, 30)
+    expect(dueLabel(iso.toISOString(), false)).toMatch(/Today 14:30/)
+  })
+
+  it('dit "Today" pour aujourd\'hui en all-day', () => {
+    const t = new Date()
+    expect(dueLabel(day(t.getFullYear(), t.getMonth(), t.getDate()), true)).toBe('Today')
+  })
+
+  it('renvoie vide sans date', () => {
+    expect(dueLabel(null, true)).toBe('')
+  })
+})
+
+describe('dueTone', () => {
+  it('overdue pour une date passée non terminée', () => {
+    expect(dueTone(day(2020, 0, 1), true, 0)).toBe('overdue')
+  })
+  it('muted si terminé', () => {
+    expect(dueTone(day(2020, 0, 1), true, 2)).toBe('muted')
+  })
+})
+
+describe('postponeTarget', () => {
+  it('+1d ajoute un jour en conservant l\'heure', () => {
+    const base = new Date(2026, 5, 12, 9, 0)
+    const r = postponeTarget('+1d', base.toISOString())
+    expect(r.getDate()).toBe(13)
+    expect(r.getHours()).toBe(9)
+  })
+  it('next-week ajoute 7 jours', () => {
+    const base = new Date(2026, 5, 12)
+    expect(postponeTarget('next-week', base.toISOString()).getDate()).toBe(19)
+  })
+})
