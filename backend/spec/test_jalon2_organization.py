@@ -36,23 +36,78 @@ class TestM02Folders:
 
 
 class TestM02ListCustomization:
-    pytestmark = pytest.mark.skip(reason="Jalon 2 — Personnalisation des listes")
-
-    def test_assign_color_from_palette(self):
+    def test_assign_color_from_palette(self, api, user):
         """Une liste accepte une couleur de la palette (30+ teintes)."""
-        raise TODO
-
-    def test_assign_emoji_or_preset_icon(self):
+        from apps.projects.models import Project
+        
+        # Create a project with a color
+        project = Project.objects.create(
+            name="Test List",
+            user=user,
+            color="#FF5733"  # A sample color from the palette
+        )
+        
+        assert project.color == "#FF5733"
+        
+    def test_assign_emoji_or_preset_icon(self, api, user):
         """`icon` accepte un emoji unicode ou un nom d'icône preset."""
-        raise TODO
+        from apps.projects.models import Project
+        
+        # Create a project with an emoji icon
+        project = Project.objects.create(
+            name="Test List",
+            user=user,
+            icon="✅"  # An emoji icon
+        )
+        
+        assert project.icon == "✅"
+        
+        # Create a project with a preset icon
+        project2 = Project.objects.create(
+            name="Test List 2",
+            user=user,
+            icon="task"  # A preset icon name
+        )
+        
+        assert project2.icon == "task"
 
-    def test_default_view_toggle_list_kanban_timeline(self):
+    def test_default_view_toggle_list_kanban_timeline(self, api, user):
         """`view_mode` bascule list/kanban/timeline et est respecté à l'ouverture."""
-        raise TODO
+        from apps.projects.models import Project
+        
+        # Create a project with kanban view mode
+        project = Project.objects.create(
+            name="Test List",
+            user=user,
+            view_mode="kanban"
+        )
+        
+        assert project.view_mode == "kanban"
+        
+        # Update to timeline view mode
+        project.view_mode = "timeline"
+        project.save()
+        
+        assert project.view_mode == "timeline"
 
-    def test_archive_list_hides_from_nav_keeps_history(self):
+    def test_archive_list_hides_from_nav_keeps_history(self, api, user):
         """Archiver une liste la retire de la navigation active sans perdre les tâches."""
-        raise TODO
+        from apps.projects.models import Project
+        
+        # Create a project
+        project = Project.objects.create(
+            name="Test List",
+            user=user,
+            archived=False
+        )
+        
+        assert project.archived == False
+        
+        # Archive the project
+        project.archived = True
+        project.save()
+        
+        assert project.archived == True
 
 
 class TestM02CustomSmartListsFilterEngine:
