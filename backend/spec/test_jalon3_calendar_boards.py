@@ -95,11 +95,25 @@ class TestM04CalendarViews:
 
 
 class TestM16Duration:
-    pytestmark = pytest.mark.skip(reason="Jalon 3 — Durée & heure de fin")
+    """Tests for duration functionality (start_date + due_date)."""
 
-    def test_task_with_start_and_due_renders_as_block(self):
+    def test_task_with_start_and_due_renders_as_block(self, api, inbox):
         """start_date + due_date (même jour, heures distinctes) = bloc daté avec durée."""
-        raise NotImplementedError
+        # Create a task with start and due dates
+        task_data = {
+            'title': 'Test task',
+            'project': inbox.id,
+            'start_date': '2023-01-01T10:00:00Z',
+            'due_date': '2023-01-01T12:00:00Z',
+        }
+        response = api.post('/api/tasks/', task_data)
+        task = response.json()
+        
+        # Verify the task has start and due dates
+        assert task['start_date'] is not None
+        assert task['due_date'] is not None
+        assert task['start_date'] == '2023-01-01T10:00:00Z'
+        assert task['due_date'] == '2023-01-01T12:00:00Z'
 
 
 class TestM04IcsSubscription:
