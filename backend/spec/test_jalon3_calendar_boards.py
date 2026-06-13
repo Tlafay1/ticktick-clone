@@ -201,8 +201,38 @@ class TestM19ModernClassicCalendar:
 
 
 class TestM30TimelineSlotHiding:
-    pytestmark = pytest.mark.skip(reason="Jalon 3 — Masquage de plages horaires")
+    """Tests for timeline slot hiding functionality (M30.2)."""
 
-    def test_hide_inactive_hours_with_slider(self):
+    def test_hide_inactive_hours_with_slider(self, api, inbox):
         """Masquer des heures (ex. 00h–7h) ; un slider ajuste la plage visible."""
-        raise NotImplementedError
+        # Create a task that spans the hidden hours
+        task_data = {
+            'title': 'Test task',
+            'project': inbox.id,
+            'start_date': '2023-01-01T05:00:00Z',
+            'due_date': '2023-01-01T09:00:00Z',
+        }
+        response = api.post('/api/tasks/', task_data)
+        task = response.json()
+        
+        # Verify the task has start and due dates
+        assert task['start_date'] is not None
+        assert task['due_date'] is not None
+        
+        # Get user settings to check if we can set hidden hours
+        settings_response = api.get('/api/settings/')
+        settings = settings_response.json()
+        
+        # Set hidden hours (00h-7h)
+        updated_settings = {
+            'hidden_hours_start': 0,
+            'hidden_hours_end': 7
+        }
+        update_response = api.patch('/api/settings/', updated_settings)
+        assert update_response.status_code == 200
+        
+        # Verify settings were updated
+        updated_settings_response = api.get('/api/settings/')
+        updated_settings_data = updated_settings_response.json()
+        assert updated_settings_data['hidden_hours_start'] == 0
+        assert updated_settings_data['hidden_hours_end'] == 7
