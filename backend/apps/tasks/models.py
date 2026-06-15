@@ -243,9 +243,18 @@ class Reminder(models.Model):
     minutes_before = models.IntegerField(null=True, blank=True)  # pour trigger_type=relative
     trigger_at = models.DateTimeField(null=True, blank=True)    # pour trigger_type=absolute
     annoying = models.BooleanField(default=False)               # M15 : alerte persistante
+    dispatched_at = models.DateTimeField(null=True, blank=True)  # horodatage d'envoi (idempotence)
 
     class Meta:
         ordering = ["id"]
+
+    def due_at(self):
+        """Instant où le rappel doit se déclencher, ou None si indéterminable."""
+        if self.trigger_type == self.TriggerType.ABSOLUTE:
+            return self.trigger_at
+        if self.minutes_before is not None and self.task.due_date:
+            return self.task.due_date - timedelta(minutes=self.minutes_before)
+        return None
 
     def __str__(self):
         return f"Reminder<task={self.task_id} {self.trigger_type}>"

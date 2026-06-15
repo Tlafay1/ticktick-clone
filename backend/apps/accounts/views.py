@@ -1,9 +1,10 @@
+from django.conf import settings
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import UserSettings
+from .models import PushSubscription, UserSettings
 from .serializers import RegisterSerializer, UserSerializer, UserSettingsSerializer
 
 
@@ -45,3 +46,38 @@ class SettingsView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         obj, _ = UserSettings.objects.get_or_create(user=self.request.user)
         return obj
+
+
+class PushPublicKeyView(APIView):
+    """Expose la clé publique VAPID nécessaire à l'abonnement côté front."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({"public_key": settings.VAPID_PUBLIC_KEY})
+
+
+class PushSubscribeView(APIView):
+    """Enregistre (ou met à jour) l'abonnement Web Push du navigateur courant."""
+
+    def post(self, request):
+        endpoint = request.data.get("endpoint")
+        keys = request.data.get("keys", {})
+        if not endpoint or not keys.get("p256dh") or not keys.get("auth"):
+            return Response({"detail": "Abonnement incomplet."}, status=400)
+        sub, _ = PushSubscription.objects.update_or_create(
+            endpoint=endpoint,
+            defaults={
+                "user": request.user,
+                "p256dh": keys["p256dh"],
+                "auth": keys["auth"],
+            },
+        )
+        return Response({"id": sub.id}, status=201)
+
+    def delete(self, request):
+        endpoint = request.data.get("endpoint")
+        PushSubscription.objects.filter(
+            user=request.user, endpoint=endpoint
+        ).delete()
+        return Response(status=204)
