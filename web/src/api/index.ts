@@ -77,6 +77,17 @@ export const tasksApi = {
   duplicate: (id: number) => http.post<Task>(`/api/tasks/${id}/duplicate/`),
   emptyTrash: () => http.post('/api/tasks/empty-trash/'),
   activity: (id: number) => http.get<ActivityEntry[]>(`/api/tasks/${id}/activity/`),
+  importFile: async (file: File, dedupe = false) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`/api/tasks/import/${dedupe ? '?dedupe=1' : ''}`, {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: fd,
+    })
+    if (!res.ok) throw new Error('Échec de l\'import')
+    return res.json() as Promise<{ imported: number; folders_created: number; projects_created: number; tags_created: number; skipped: number }>
+  },
 }
 
 export const checkItemsApi = {
