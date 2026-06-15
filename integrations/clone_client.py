@@ -188,12 +188,24 @@ class CloneClient:
         return _to_task(await self._post("/tasks/", _from_task_kwargs(**kwargs)))
 
     async def update_task(self, task: Task) -> Task:
+        due = getattr(task, "due_date", None)
+        start = getattr(task, "start_date", None)
         payload = _from_task_kwargs(
-            title=task.title, description=getattr(task, "desc", None),
-            priority=task.priority, status=task.status,
+            title=task.title,
+            description=getattr(task, "desc", None),
+            priority=task.priority,
+            status=task.status,
             recurrence=getattr(task, "repeat_flag", None),
             all_day=getattr(task, "is_all_day", None),
+            due_date=due.isoformat() if due else None,
+            start_date=start.isoformat() if start else None,
+            project_id=getattr(task, "project_id", None),
+            column_id=getattr(task, "column_id", None),
         )
+        # Tags : liste de noms → résolution en IDs
+        tag_names = getattr(task, "tags", None)
+        if tag_names is not None:
+            payload["tags"] = await self._resolve_tag_ids(tag_names)
         return _to_task(await self._patch(f"/tasks/{task.id}/", payload))
 
     async def complete_task(self, task_id: str, project_id: Optional[str] = None) -> Task:
@@ -308,6 +320,10 @@ class CloneClient:
 
         return params
 
+    def _invalidate_caches(self) -> None:
+        self.__dict__.pop("_project_cache", None)
+        self.__dict__.pop("_tag_cache", None)
+
     async def _resolve_project_name(self, name: str) -> Optional[int]:
         """Retourne l'id du premier projet dont le nom correspond (insensible à la casse)."""
         if not hasattr(self, "_project_cache"):
@@ -318,6 +334,20 @@ class CloneClient:
             None,
         )
         return match["id"] if match else None
+
+    async def _resolve_tag_ids(self, names: list[str]) -> list[int]:
+        """Convertit une liste de noms de tags en IDs (crée les tags manquants)."""
+        if not hasattr(self, "_tag_cache"):
+            self._tag_cache: list[dict] = await self._get("/tags/")
+        result = []
+        for name in names:
+            name_lower = name.lower()
+            match = next((t for t in self._tag_cache if t.get("name", "").lower() == name_lower), None)
+            if not match:
+                match = await self._post("/tags/", {"name": name})
+                self._tag_cache.append(match)
+            result.append(match["id"])
+        return result
 
     async def pin_task(self, task_id: str, project_id: Optional[str] = None) -> Task:
         return _to_task(await self._patch(f"/tasks/{task_id}/", {"is_pinned": True}))
@@ -342,7 +372,9 @@ class CloneClient:
             payload["color"] = color
         if folder_id:
             payload["group"] = folder_id
-        return _to_project(await self._post("/projects/", payload))
+        result = _to_project(await self._post("/projects/", payload))
+        self._invalidate_caches()
+        return result
 
     async def update_project(self, project_id: str, name: Optional[str] = None,
                              color: Optional[str] = None,
