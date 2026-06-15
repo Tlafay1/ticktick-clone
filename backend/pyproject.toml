@@ -18,7 +18,7 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "whitenoise>=6.8",
     "celery>=5.4",
-    "redis>=5.2",
+    "redis>=4.6,<5",
     "pywebpush>=2.0",
 ]
 
