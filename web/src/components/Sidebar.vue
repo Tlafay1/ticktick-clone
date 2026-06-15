@@ -11,10 +11,15 @@ import ProjectEditor from './ProjectEditor.vue'
 import ProjectContextMenu from './ProjectContextMenu.vue'
 import GroupContextMenu from './GroupContextMenu.vue'
 import { useDragSort } from '@/composables/useDragSort'
+import { useUiState } from '@/composables/useUiState'
+import { watch } from 'vue'
 import TagManager from './TagManager.vue'
 
 const router = useRouter()
 const route = useRoute()
+const { sidebarOpen, toggleSidebar, closeSidebar } = useUiState()
+// Referme le tiroir à chaque navigation (mobile).
+watch(() => route.fullPath, closeSidebar)
 const projectStore = useProjectStore()
 const userStore = useUserStore()
 const tagStore = useTagStore()
@@ -187,7 +192,12 @@ function cycleTheme() {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <!-- Bouton hamburger (mobile uniquement) -->
+  <button class="drawer-toggle" aria-label="Menu" @click="toggleSidebar">☰</button>
+  <!-- Voile cliquable pour fermer le tiroir -->
+  <div v-if="sidebarOpen" class="drawer-overlay" @click="closeSidebar" />
+
+  <aside class="sidebar" :class="{ open: sidebarOpen }">
     <div class="sidebar-top">
       <div class="app-title">TickTick</div>
     </div>
@@ -429,6 +439,50 @@ function cycleTheme() {
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
+}
+
+/* Hamburger + voile : masqués sur desktop, visibles en tiroir sur mobile. */
+.drawer-toggle { display: none; }
+.drawer-overlay { display: none; }
+
+@media (max-width: 768px) {
+  .drawer-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 1200;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+    color: var(--text);
+  }
+  .drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1400;
+    width: 82vw;
+    max-width: 300px;
+    min-width: 0;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    box-shadow: 2px 0 20px rgba(0, 0, 0, 0.18);
+  }
+  .sidebar.open { transform: translateX(0); }
 }
 
 .sidebar-top { padding: 20px 16px 12px; }

@@ -20,6 +20,12 @@ const priorityClass = computed(() => {
 const isCompleted = computed(() => props.task.status === 2)
 const isWontDo = computed(() => props.task.status === -1)
 
+// Compteur de sous-tâches parmi les tâches déjà chargées.
+const childCounts = computed(() => {
+  const children = store.tasks.filter((t) => t.parent === props.task.id)
+  return { done: children.filter((c) => c.status === 2).length, total: children.length }
+})
+
 const dueTone_ = computed(() => dueTone(props.task.due_date, props.task.is_all_day, props.task.status))
 const dueLabel_ = computed(() => dueLabel(props.task.due_date, props.task.is_all_day))
 
@@ -62,8 +68,9 @@ function openContext(e: MouseEvent) {
       <div v-if="task.progress > 0" class="task-progress-bar">
         <div class="task-progress-fill" :style="`width:${task.progress}%`" />
       </div>
-      <div v-if="dueLabel_ || task.check_items?.length || task.tags?.length" class="task-meta">
+      <div v-if="dueLabel_ || task.check_items?.length || childCounts.total || task.tags?.length" class="task-meta">
         <span v-if="dueLabel_" class="task-due" :class="`due-${dueTone_}`">{{ dueLabel_ }}</span>
+        <span v-if="childCounts.total" class="task-checks">↳ {{ childCounts.done }}/{{ childCounts.total }}</span>
         <span v-if="task.check_items?.length" class="task-checks">
           ☑ {{ task.check_items.filter(c => c.is_done).length }}/{{ task.check_items.length }}
         </span>

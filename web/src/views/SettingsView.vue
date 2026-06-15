@@ -4,11 +4,16 @@ import { useTagStore } from '@/stores/tags'
 import { useProjectStore } from '@/stores/projects'
 import { useRouter } from 'vue-router'
 import { onMounted, ref } from 'vue'
+import { enablePushNotifications } from '@/composables/usePushNotifications'
 
 const userStore = useUserStore()
 const tagStore = useTagStore()
 const projectStore = useProjectStore()
 const router = useRouter()
+
+function enablePush() {
+  enablePushNotifications()
+}
 
 onMounted(async () => {
   if (!userStore.user) userStore.load()
@@ -292,6 +297,16 @@ const soundOptions = [
             </template>
           </div>
           <div v-if="!tagStore.tags.length" class="empty-hint">Aucun tag créé.</div>
+        </div>
+      </section>
+
+      <!-- Notifications push (Web Push / VAPID) -->
+      <section class="settings-section">
+        <h2 class="section-title">Notifications</h2>
+        <p class="section-hint">Activez les notifications push sur cet appareil pour recevoir les rappels de tâches.</p>
+        <div class="setting-row">
+          <label class="setting-label">🔔 Notifications push</label>
+          <button class="btn btn-primary" @click="enablePush">Activer sur cet appareil</button>
         </div>
       </section>
 

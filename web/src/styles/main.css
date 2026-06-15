@@ -174,3 +174,21 @@ a { color: var(--primary); text-decoration: none; }
 .md-body img { max-width: 100%; border-radius: 8px; }
 .md-body ul.contains-task-list { list-style: none; padding-left: 4px; }
 .md-body input[type='checkbox'] { accent-color: var(--primary); margin-right: 6px; }
+
+/* ----- Responsive mobile (Android) ----- */
+@media (max-width: 768px) {
+  body { font-size: 15px; }
+
+  /* Laisse la place au bouton hamburger flottant (haut-gauche). */
+  .list-header,
+  .view-header,
+  .page-header { padding-left: 56px !important; }
+
+  /* Cibles tactiles plus généreuses. */
+  .icon-btn { width: 34px; height: 34px; }
+  .task-row { padding: 11px 14px; }
+  .nav-item { padding-top: 10px; padding-bottom: 10px; }
+
+  /* Évite les débordements horizontaux des panneaux larges. */
+  .main-panel { min-width: 0; }
+}
