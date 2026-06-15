@@ -83,10 +83,13 @@ async function submit() {
   gap: 12px;
   width: 320px;
   padding: 32px;
-  background: #fff;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 14px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.12);
+}
+@media (max-width: 480px) {
+  .card { width: calc(100vw - 40px); padding: 24px 20px; }
 }
 h1 {
   margin: 0;

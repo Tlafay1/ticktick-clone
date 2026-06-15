@@ -367,10 +367,11 @@ const soundOptions = [
   min-width: 200px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
-  padding: 20px 16px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  flex-shrink: 0;
 }
 .settings-brand { font-size: 18px; font-weight: 700; color: var(--primary); }
 .back-btn {
@@ -509,4 +510,20 @@ const soundOptions = [
 .tag-action { font-size: 14px; }
 .danger-btn { color: var(--danger, #e03131); }
 .empty-hint { color: var(--text-muted); font-size: 13px; }
+
+@media (max-width: 768px) {
+  .settings-layout { flex-direction: column; }
+  .settings-sidebar {
+    width: 100%;
+    min-width: 0;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-main { padding: 20px 16px; }
+  .settings-title { font-size: 20px; margin-bottom: 20px; }
+}
 </style>
