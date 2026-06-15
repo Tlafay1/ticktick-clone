@@ -178,6 +178,13 @@ a { color: var(--primary); text-decoration: none; }
 .md-body ul.contains-task-list { list-style: none; padding-left: 4px; }
 .md-body input[type='checkbox'] { accent-color: var(--primary); margin-right: 6px; }
 
+/* ----- Scrollbars fins (Webkit + Firefox) ----- */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+
 /* ----- Responsive mobile (Android) ----- */
 @media (max-width: 768px) {
   body { font-size: 15px; }

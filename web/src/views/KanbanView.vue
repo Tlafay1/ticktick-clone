@@ -148,9 +148,13 @@ type KanbanCol = { id: number; name: string; isDone: boolean }
 
 const allColumns = computed((): KanbanCol[] => {
   const cols: KanbanCol[] = [
-    { id: UNSECTIONED_ID, name: 'Sans section', isDone: false },
     ...sections.value.map(s => ({ id: s.id, name: s.name, isDone: s.is_done })),
   ]
+  // Colonne "Sans section" uniquement si des tâches non assignées existent
+  const hasUnsectioned = taskStore.tasks.some(t => t.status === 0 && !t.section)
+  if (hasUnsectioned) {
+    cols.unshift({ id: UNSECTIONED_ID, name: 'Sans section', isDone: false })
+  }
   // Si aucune section n'est marquée Done, ajouter une colonne virtuelle
   if (!doneSection.value) {
     cols.push({ id: -1, name: '✓ Terminées', isDone: true })
@@ -204,8 +208,8 @@ function closeColMenu() { colMenu.value = null }
             class="kanban-col"
             :class="{ 'drag-over': overSection === col.id, 'done-col': col.isDone }"
             @dragover.prevent="overSection = col.id"
-            @drop="onDropSection(col.id, col.isDone)"
-            @dragleave="overSection = null"
+            @drop.prevent="onDropSection(col.id, col.isDone)"
+            @dragleave.self="overSection = null"
           >
             <div
               class="col-header"
@@ -225,7 +229,7 @@ function closeColMenu() { colMenu.value = null }
               >⋯</button>
             </div>
 
-            <div v-show="!collapsed[col.id]" class="col-tasks">
+            <div v-show="!collapsed[col.id]" class="col-tasks" @dragover.prevent>
               <div
                 v-for="t in tasksForSection(col.id, col.isDone)"
                 :key="t.id"
