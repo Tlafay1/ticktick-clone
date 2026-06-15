@@ -168,7 +168,7 @@ async function importFile() {
     if (file.name.endsWith('.csv')) {
       try {
         const stats = await tasksApi.importFile(file)
-        await projectStore.load()
+        await Promise.all([projectStore.load(), tagStore.load()])
         await loadView()
         const n = stats.imported
         pushToast(`Import terminé : ${n} tâche${n !== 1 ? 's' : ''} importée${n !== 1 ? 's' : ''}`, 'success')
@@ -199,6 +199,10 @@ async function emptyTrash() {
   await tasksApi.emptyTrash()
   taskStore.tasks = []
 }
+
+const headerMenuOpen = ref(false)
+function toggleHeaderMenu() { headerMenuOpen.value = !headerMenuOpen.value }
+function closeHeaderMenu() { headerMenuOpen.value = false }
 
 const { connect: connectWs } = useRealtimeSync()
 const { start: startNotifications } = useReminderNotifications()
@@ -243,35 +247,20 @@ watch(() => route.fullPath, loadView)
         <div class="header-right">
           <span class="task-count">{{ taskStore.tasks.length }} tâche{{ taskStore.tasks.length !== 1 ? 's' : '' }}</span>
           <button
-            v-if="!isTrash && taskStore.tasks.length"
-            class="btn btn-ghost"
-            title="Exporter CSV"
-            @click="exportCSV"
-          >↓ CSV</button>
-          <button
-            v-if="!isTrash && taskStore.tasks.length"
-            class="btn btn-ghost"
-            title="Exporter JSON"
-            @click="exportJSON"
-          >↓ JSON</button>
-          <button
-            v-if="!isTrash"
-            class="btn btn-ghost"
-            title="Importer"
-            @click="importFile"
-          >↑ Importer</button>
-          <button
             v-if="route.name === 'project'"
             class="btn btn-ghost view-toggle"
             title="Vue Kanban"
             @click="router.push(`/project/${route.params.id}/kanban`)"
           >⊞ Kanban</button>
-          <button
-            v-if="!isTrash && taskStore.tasks.length"
-            class="btn btn-ghost"
-            title="Imprimer / Exporter PDF"
-            @click="printView"
-          >🖨</button>
+          <button v-if="!isTrash" class="btn btn-ghost" title="Importer" @click="importFile">↑ Importer</button>
+          <div v-if="!isTrash" class="header-menu-wrap">
+            <button class="icon-btn" title="Plus d'options" @click="toggleHeaderMenu">⋯</button>
+            <div v-if="headerMenuOpen" class="header-dropdown" @mouseleave="closeHeaderMenu">
+              <button class="menu-item" @click="exportCSV(); closeHeaderMenu()">↓ Exporter CSV</button>
+              <button class="menu-item" @click="exportJSON(); closeHeaderMenu()">↓ Exporter JSON</button>
+              <button class="menu-item" @click="printView(); closeHeaderMenu()">🖨 Imprimer / PDF</button>
+            </div>
+          </div>
           <button v-if="isTrash && taskStore.tasks.length" class="btn btn-ghost danger-text" @click="emptyTrash">
             Vider la corbeille
           </button>
@@ -400,6 +389,35 @@ watch(() => route.fullPath, loadView)
 }
 
 .danger-text { color: var(--danger); }
+
+.header-menu-wrap { position: relative; }
+.header-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 170px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  padding: 4px;
+  z-index: 200;
+}
+.header-dropdown .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.header-dropdown .menu-item:hover { background: var(--bg-hover); }
 
 .task-list-scroll {
   flex: 1;
