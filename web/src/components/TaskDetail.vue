@@ -554,6 +554,19 @@ function formatCommentDate(iso: string) {
   color: var(--text-muted);
 }
 
+/* Mobile : le détail passe en plein écran ; le placeholder « vide » disparaît. */
+@media (max-width: 768px) {
+  .detail-empty { display: none; }
+  .detail-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    width: 100%;
+    min-width: 0;
+    border-left: none;
+  }
+}
+
 .detail-header {
   display: flex;
   justify-content: flex-end;

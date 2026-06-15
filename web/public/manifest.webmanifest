@@ -1,0 +1,19 @@
+{
+  "name": "TickTick Clone",
+  "short_name": "Tasks",
+  "description": "Gestionnaire de tâches self-hosted",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#4772fa",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
