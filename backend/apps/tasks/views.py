@@ -65,7 +65,7 @@ class TaskFilter(django_filters.FilterSet):
 
 
 class TaskViewSet(OwnedModelViewSet):
-    queryset = Task.objects.all().prefetch_related("check_items", "tags")
+    queryset = Task.objects.all().prefetch_related("check_items", "tags", "reminders")
     serializer_class = TaskSerializer
     filterset_class = TaskFilter
     ordering_fields = ["sort_order", "due_date", "priority", "created_at", "title",

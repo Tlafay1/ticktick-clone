@@ -101,11 +101,18 @@ class SearchHistorySerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at"]
 
 
+class NestedReminderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Reminder
+        fields = ["id", "trigger_type", "minutes_before", "trigger_at", "annoying"]
+
+
 class TaskSerializer(serializers.ModelSerializer):
     check_items = CheckItemSerializer(many=True, read_only=True)
     tags = serializers.PrimaryKeyRelatedField(
         many=True, queryset=Tag.objects.all(), required=False
     )
+    reminders = NestedReminderSerializer(many=True, required=False)
 
     class Meta:
         model = Task
@@ -115,7 +122,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "start_date", "due_date", "planned_date", "end_date", "is_all_day", "timezone_name",
             "rrule", "repeat_from", "tags", "sort_order",
             "completed_at", "trashed_at", "archived_at", "created_at", "modified_at",
-            "check_items", "estimated_pomos",
+            "check_items", "reminders", "estimated_pomos",
         ]
         read_only_fields = [
             "completed_at", "trashed_at", "archived_at", "pinned_at", "created_at", "modified_at",
@@ -156,15 +163,20 @@ class TaskSerializer(serializers.ModelSerializer):
         # Le flag épinglé maintient pinned_at pour l'ordre d'épinglage.
         return data
 
+    def _save_reminders(self, task, reminders_data):
+        task.reminders.all().delete()
+        for r in reminders_data[:5]:
+            Reminder.objects.create(task=task, **r)
+
     def update(self, instance, validated_data):
         from django.utils import timezone
 
+        reminders_data = validated_data.pop("reminders", None)
         if "is_pinned" in validated_data:
             if validated_data["is_pinned"] and not instance.is_pinned:
                 instance.pinned_at = timezone.now()
             elif not validated_data["is_pinned"]:
                 instance.pinned_at = None
-        # Sauvegarder la version de description avant modification
         if "description" in validated_data and validated_data["description"] != instance.description:
             TaskVersion.objects.create(task=instance, description=instance.description)
         tracked = {"title", "due_date", "start_date", "priority", "project"}
@@ -174,6 +186,8 @@ class TaskSerializer(serializers.ModelSerializer):
         )
         due_changed = "due_date" in changed
         task = super().update(instance, validated_data)
+        if reminders_data is not None:
+            self._save_reminders(task, reminders_data)
         if changed:
             ActivityLog.log(task, "updated", fields=changed)
         if due_changed:
@@ -183,8 +197,11 @@ class TaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         from django.utils import timezone
 
+        reminders_data = validated_data.pop("reminders", None)
         if validated_data.get("is_pinned"):
             validated_data["pinned_at"] = timezone.now()
         task = super().create(validated_data)
+        if reminders_data:
+            self._save_reminders(task, reminders_data)
         ActivityLog.log(task, "created")
         return task

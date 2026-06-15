@@ -41,6 +41,7 @@ class ProjectViewSet(OwnedModelViewSet):
 class SectionViewSet(viewsets.ModelViewSet):
     serializer_class = SectionSerializer
     queryset = Section.objects.all()
+    filterset_fields = ["project"]
 
     def get_queryset(self):
         return Section.objects.filter(project__user=self.request.user)
