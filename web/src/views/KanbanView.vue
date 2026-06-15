@@ -55,7 +55,10 @@ function tasksForSection(sectionId: number | null, isDone: boolean) {
 const draggingTask = ref<Task | null>(null)
 const overSection = ref<number | null>(null)
 
-function onDragTaskStart(t: Task) { draggingTask.value = t }
+function onDragTaskStart(e: DragEvent, t: Task) {
+  e.dataTransfer?.setData('text/plain', String(t.id))
+  draggingTask.value = t
+}
 
 async function onDropSection(sectionId: number, isDone: boolean) {
   if (!draggingTask.value) return
@@ -236,7 +239,7 @@ function closeColMenu() { colMenu.value = null }
                 class="kanban-card"
                 :class="{ selected: taskStore.selectedId === t.id }"
                 draggable="true"
-                @dragstart="onDragTaskStart(t)"
+                @dragstart="onDragTaskStart($event, t)"
                 @click="taskStore.select(t.id)"
                 @contextmenu="onCardContextMenu($event, t)"
               >
