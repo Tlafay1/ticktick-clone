@@ -23,12 +23,12 @@ def heatmap(request):
         completed_at__date__lte=end,
     ).values_list("completed_at", flat=True)
 
-    counts = {}
+    counts: dict[str, int] = {}
     for completed_at in tasks:
         day = completed_at.date().isoformat()
         counts[day] = counts.get(day, 0) + 1
 
-    return Response(counts)
+    return Response([{"date": d, "count": c} for d, c in sorted(counts.items())])
 
 
 @api_view(["GET"])
@@ -52,11 +52,15 @@ def summary(request):
         due_date__lt=today_start,
     ).count()
 
-    # Distribution par liste (aujourd'hui + prochains 7 jours actives)
-    by_list = {}
+    # Distribution par liste
+    by_list_raw: dict[str, int] = {}
     for task in user_tasks.filter(status=Task.Status.NORMAL).select_related("project"):
         name = task.project.name if task.project else "Inbox"
-        by_list[name] = by_list.get(name, 0) + 1
+        by_list_raw[name] = by_list_raw.get(name, 0) + 1
+    by_list = [
+        {"project__name": name, "count": count}
+        for name, count in sorted(by_list_raw.items(), key=lambda x: -x[1])
+    ]
 
     # Meilleures heures : heures avec le plus de complétions sur 30 jours
     thirty_days_ago = now - timedelta(days=30)
@@ -132,16 +136,22 @@ def productivity_score(request):
 
     score = max(0, completed_on_time * 10 - still_overdue * 5 + completed_late * 3)
 
-    # Niveau basé sur les complétions totales
     total_completed = Task.objects.filter(
         user=request.user, status=Task.Status.COMPLETED
     ).count()
-    level = min(50, 1 + total_completed // 20)
+    if total_completed < 20:
+        level = "Débutant"
+    elif total_completed < 100:
+        level = "Régulier"
+    elif total_completed < 500:
+        level = "Avancé"
+    else:
+        level = "Expert"
 
     return Response({
         "score": score,
         "level": level,
-        "completed_on_time": completed_on_time,
-        "completed_late": completed_late,
+        "on_time": completed_on_time,
+        "late": completed_late,
         "overdue": still_overdue,
     })
