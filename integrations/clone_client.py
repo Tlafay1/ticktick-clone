@@ -23,6 +23,7 @@ NOTE de mapping : le clone expose des champs en snake_case (`due_date`, `descrip
 
 from __future__ import annotations
 
+import re
 import shlex
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -81,8 +82,30 @@ def _reminder_trigger(r: dict) -> str:
     return "TRIGGER:PT0S"
 
 
+_TRIGGER_RE = re.compile(r"(?:-)?\s*P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?")
+
+
+def _trigger_to_reminder(trigger: Any) -> dict:
+    """Convertit un TRIGGER TickTick (chaîne ou dict) en payload de rappel du clone."""
+    if isinstance(trigger, dict):
+        return trigger  # déjà au bon format
+    s = str(trigger)
+    m = _TRIGGER_RE.search(s)
+    if not m:
+        return {"trigger_type": "RELATIVE", "minutes_before": 0}
+    days    = int(m.group(1) or 0)
+    hours   = int(m.group(2) or 0)
+    minutes = int(m.group(3) or 0)
+    return {"trigger_type": "RELATIVE", "minutes_before": days * 1440 + hours * 60 + minutes}
+
+
 def _from_task_kwargs(**kwargs) -> dict:
-    """Traduit les kwargs des outils (noms TickTick) vers le payload du clone."""
+    """Traduit les kwargs des outils (noms TickTick) vers le payload du clone.
+
+    Les valeurs `None` sont omises (PATCH partiel). Pour effacer un champ,
+    passer la clé avec la valeur `None` et appeler directement `_patch` avec
+    `{"field": null}`, ou utiliser `_CLEAR` comme valeur.
+    """
     mapping = {
         "content": "description",
         "description": "description",
@@ -185,7 +208,16 @@ class CloneClient:
         return _to_task(await self._get(f"/tasks/{task_id}/"))
 
     async def create_task(self, **kwargs) -> Task:
-        return _to_task(await self._post("/tasks/", _from_task_kwargs(**kwargs)))
+        payload = _from_task_kwargs(**kwargs)
+        # Tags : noms → IDs (le backend attend des IDs)
+        if "tags" in payload and payload["tags"]:
+            payload["tags"] = await self._resolve_tag_ids(
+                [t if isinstance(t, str) else t for t in payload["tags"]]
+            )
+        # Rappels : convertit TRIGGER:-PT30M → {minutes_before: 30}
+        if "reminders" in payload:
+            payload["reminders"] = [_trigger_to_reminder(r) for r in payload["reminders"] if r]
+        return _to_task(await self._post("/tasks/", payload))
 
     async def update_task(self, task: Task) -> Task:
         due = getattr(task, "due_date", None)
@@ -202,10 +234,15 @@ class CloneClient:
             project_id=getattr(task, "project_id", None),
             column_id=getattr(task, "column_id", None),
         )
-        # Tags : liste de noms → résolution en IDs
         tag_names = getattr(task, "tags", None)
         if tag_names is not None:
             payload["tags"] = await self._resolve_tag_ids(tag_names)
+        reminders = getattr(task, "reminders", None)
+        if reminders is not None:
+            payload["reminders"] = [
+                _trigger_to_reminder(r.trigger if hasattr(r, "trigger") else r)
+                for r in reminders
+            ]
         return _to_task(await self._patch(f"/tasks/{task.id}/", payload))
 
     async def complete_task(self, task_id: str, project_id: Optional[str] = None) -> Task:
@@ -397,6 +434,13 @@ class CloneClient:
 
     async def create_folder(self, name: str) -> ProjectGroup:
         return _to_folder(await self._post("/project-groups/", {"name": name}))
+
+    async def update_folder(self, folder_id: str, name: str) -> ProjectGroup:
+        return _to_folder(await self._patch(f"/project-groups/{folder_id}/", {"name": name}))
+
+    async def delete_folder(self, folder_id: str) -> None:
+        r = await self._http.delete(f"/project-groups/{folder_id}/")
+        r.raise_for_status()
 
     # ----- Colonnes kanban (= sections) -----
 
