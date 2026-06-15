@@ -23,6 +23,7 @@ NOTE de mapping : le clone expose des champs en snake_case (`due_date`, `descrip
 
 from __future__ import annotations
 
+import shlex
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -206,7 +207,117 @@ class CloneClient:
         return _to_task(await self._patch(f"/tasks/{task_id}/", {"project": to_project_id}))
 
     async def search_tasks(self, query: str) -> list[Task]:
-        return [_to_task(t) for t in await self._get("/tasks/", q=query)]
+        """Recherche avec syntaxe filtre optionnelle.
+
+        Tokens reconnus (insensibles à la casse) :
+          status:open|done|wontdo        priority:high|medium|low|none
+          due:today|overdue|thisweek     project:<nom>   tag:<nom>   #<nom>
+          is_pinned:true                 has_date:true
+        Le reste du texte est passé comme recherche plein-texte (?q=).
+
+        Exemples :
+          "status:open due:today"          → tâches non terminées dues aujourd'hui
+          "priority:high #travail"         → haute priorité, tag "travail"
+          "projet:Dev réunion"             → projet "Dev", titre contient "réunion"
+          "*" ou ""                        → toutes les tâches actives
+        """
+        params = await self._build_filter_params(query)
+        return [_to_task(t) for t in await self._get("/tasks/", **params)]
+
+    async def _build_filter_params(self, query: str) -> dict[str, Any]:
+        """Traduit une requête textuelle en params d'API via shlex."""
+        query = (query or "").strip()
+        if not query or query == "*":
+            return {}
+
+        try:
+            tokens = shlex.split(query)
+        except ValueError:
+            tokens = query.split()
+
+        now = datetime.now(timezone.utc)
+        params: dict[str, Any] = {}
+        text_parts: list[str] = []
+
+        _status_map = {"open": 0, "normal": 0, "active": 0,
+                       "done": 2, "completed": 2, "wontdo": -1, "wont_do": -1}
+        _prio_map   = {"high": 5, "medium": 3, "low": 1, "none": 0}
+
+        for token in tokens:
+            if token.startswith("#"):
+                params["tag"] = token[1:]
+                continue
+            if ":" not in token:
+                text_parts.append(token)
+                continue
+
+            key, _, val = token.partition(":")
+            key = key.lower()
+            val_lower = val.lower()
+
+            if key in ("status", "état"):
+                params["status"] = _status_map.get(val_lower, 0)
+
+            elif key in ("priority", "priorité", "prio"):
+                params["priority"] = _prio_map.get(val_lower, 0)
+
+            elif key == "due":
+                if val_lower == "today":
+                    tomorrow = (now + timedelta(days=1)).replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    )
+                    params.setdefault("due_before", tomorrow.isoformat())
+                    params.setdefault("has_date", "true")
+                elif val_lower in ("overdue", "past", "late"):
+                    params.setdefault("due_before", now.isoformat())
+                    params.setdefault("status", 0)
+                elif val_lower in ("thisweek", "this_week", "week"):
+                    end = (now + timedelta(days=7)).replace(
+                        hour=23, minute=59, second=59, microsecond=0
+                    )
+                    params.setdefault("due_before", end.isoformat())
+                    params.setdefault("has_date", "true")
+                else:
+                    # date ISO directe
+                    params["due_before"] = val
+
+            elif key in ("tag", "label", "étiquette"):
+                params["tag"] = val
+
+            elif key in ("project", "list", "liste", "projet"):
+                # Résolution par nom → id (avec cache)
+                pid = await self._resolve_project_name(val)
+                if pid:
+                    params["project"] = pid
+
+            elif key in ("is_pinned", "pinned", "épinglé"):
+                params["is_pinned"] = val_lower in ("true", "1", "yes", "oui")
+
+            elif key in ("has_date", "scheduled"):
+                params["has_date"] = val_lower in ("true", "1", "yes", "oui")
+
+            elif key == "section":
+                params["section"] = val
+
+            else:
+                # clé inconnue → repasse en texte libre
+                text_parts.append(token)
+
+        if text_parts:
+            params["q"] = " ".join(text_parts)
+
+        return params
+
+    async def _resolve_project_name(self, name: str) -> Optional[int]:
+        """Retourne l'id du premier projet dont le nom correspond (insensible à la casse)."""
+        if not hasattr(self, "_project_cache"):
+            self._project_cache: list[dict] = await self._get("/projects/")
+        name_lower = name.lower()
+        match = next(
+            (p for p in self._project_cache if p.get("name", "").lower() == name_lower),
+            None,
+        )
+        return match["id"] if match else None
 
     async def pin_task(self, task_id: str, project_id: Optional[str] = None) -> Task:
         return _to_task(await self._patch(f"/tasks/{task_id}/", {"is_pinned": True}))
