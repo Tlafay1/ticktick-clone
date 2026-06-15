@@ -1,0 +1,537 @@
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { useProjectStore } from '@/stores/projects'
+import { useUserStore } from '@/stores/user'
+import { useTagStore } from '@/stores/tags'
+import { useTaskStore } from '@/stores/tasks'
+import { authApi, projectsApi } from '@/api'
+import type { Project, ProjectGroup } from '@/types'
+import ProjectEditor from './ProjectEditor.vue'
+import ProjectContextMenu from './ProjectContextMenu.vue'
+import GroupContextMenu from './GroupContextMenu.vue'
+import { useDragSort } from '@/composables/useDragSort'
+import TagManager from './TagManager.vue'
+
+const router = useRouter()
+const route = useRoute()
+const projectStore = useProjectStore()
+const userStore = useUserStore()
+const tagStore = useTagStore()
+const taskStore = useTaskStore()
+
+onMounted(async () => {
+  if (!tagStore.tags.length) await tagStore.load()
+})
+
+const ALL_SMART_LISTS = [
+  { key: 'today',     label: 'Aujourd\'hui',      icon: '☀️' },
+  { key: 'tomorrow',  label: 'Demain',             icon: '🌤️' },
+  { key: 'next7',     label: '7 prochains jours',  icon: '📅' },
+  { key: 'all',       label: 'Toutes',             icon: '📋' },
+  { key: 'inbox',     label: 'Boîte de réception', icon: '📥' },
+  { key: 'completed', label: 'Terminées',          icon: '✅' },
+]
+
+const smartLists = computed(() => {
+  const visibility = userStore.user?.settings?.smart_list_visibility ?? {}
+  return ALL_SMART_LISTS.filter(sl => visibility[sl.key] !== false)
+})
+
+const newListName = ref('')
+const showNewList = ref(false)
+
+function isSmartActive(key: string) {
+  return route.name === 'smart-list' && route.params.smartList === key
+}
+function isProjectActive(id: number) {
+  return route.name === 'project' && route.params.id === String(id)
+}
+
+async function logout() {
+  authApi.logout()
+  router.push('/login')
+}
+
+async function addList() {
+  const name = newListName.value.trim()
+  if (!name) return
+  await projectStore.create(name)
+  newListName.value = ''
+  showNewList.value = false
+}
+
+const userProjects = computed(() =>
+  projectStore.projects.filter((p) => !p.is_inbox && !p.archived)
+)
+
+const ungroupedProjects = computed(() =>
+  userProjects.value.filter((p) => !p.group)
+)
+
+function projectsInGroup(groupId: number) {
+  return userProjects.value.filter((p) => p.group === groupId)
+}
+
+const collapsedGroups = ref<Record<number, boolean>>({})
+function toggleGroup(id: number) {
+  collapsedGroups.value[id] = !collapsedGroups.value[id]
+}
+
+// Nouveau dossier
+const newGroupName = ref('')
+const showNewGroup = ref(false)
+
+async function addGroup() {
+  const name = newGroupName.value.trim()
+  if (!name) return
+  await projectStore.createGroup(name)
+  newGroupName.value = ''
+  showNewGroup.value = false
+}
+
+// ── Context menus ────────────────────────────────────────────────────────────
+
+type ContextState =
+  | { type: 'project'; target: Project; x: number; y: number }
+  | { type: 'group';   target: ProjectGroup; x: number; y: number }
+  | null
+
+const contextMenu = ref<ContextState>(null)
+
+function showProjectMenu(e: MouseEvent, p: Project) {
+  e.preventDefault()
+  contextMenu.value = { type: 'project', target: p, x: e.clientX, y: e.clientY }
+}
+
+function showGroupMenu(e: MouseEvent, g: ProjectGroup) {
+  e.preventDefault()
+  contextMenu.value = { type: 'group', target: g, x: e.clientX, y: e.clientY }
+}
+
+// ── Drag projet → dossier ───────────────────────────────────────────────────
+
+const draggingProjectId = ref<number | null>(null)
+const groupDropOver = ref<number | null>(null)
+
+function onProjectDragStart(e: DragEvent, p: Project) {
+  draggingProjectId.value = p.id
+  e.dataTransfer?.setData('text/plain', String(p.id))
+}
+
+function onGroupDragOver(e: DragEvent, groupId: number) {
+  if (draggingProjectId.value === null) return
+  e.preventDefault()
+  groupDropOver.value = groupId
+}
+
+async function onGroupDrop(groupId: number) {
+  const pid = draggingProjectId.value
+  draggingProjectId.value = null
+  groupDropOver.value = null
+  if (pid === null) return
+  await projectStore.update(pid, { group: groupId })
+}
+
+function onGroupDragLeave() { groupDropOver.value = null }
+
+// ── Tri des projets non groupés ─────────────────────────────────────────────
+
+const editingProject = ref<Project | null>(null)
+
+const { overIdx: listOverIdx, onDragStart: listDragStart, onDragOver: listDragOver, onDrop: listDrop, onDragEnd: listDragEnd } = useDragSort(
+  async (from, to) => {
+    const list = [...ungroupedProjects.value]
+    const [moved] = list.splice(from, 1)
+    list.splice(to, 0, moved)
+    const updates = list.map((p, i) => ({ id: p.id, sort_order: (i + 1) * 1000 }))
+    projectStore.projects = projectStore.projects.map((p) => {
+      const u = updates.find((x) => x.id === p.id)
+      return u ? { ...p, sort_order: u.sort_order } : p
+    })
+    await Promise.all(updates.map(({ id, sort_order }) => projectsApi.update(id, { sort_order })))
+  }
+)
+
+// ── Tags hiérarchiques ───────────────────────────────────────────────────────
+const collapsedTags = ref<Record<number, boolean>>({})
+function toggleTagCollapse(id: number) {
+  collapsedTags.value[id] = !collapsedTags.value[id]
+}
+
+// ── Drag tâche → tag ────────────────────────────────────────────────────────
+const tagDropOver = ref<number | null>(null)
+
+async function dropTaskOnTag(e: DragEvent, tagId: number) {
+  tagDropOver.value = null
+  const taskIdStr = e.dataTransfer?.getData('task-id')
+  if (!taskIdStr) return
+  const taskId = Number(taskIdStr)
+  const task = taskStore.tasks.find(t => t.id === taskId)
+  if (!task) return
+  const currentTags = task.tags ?? []
+  if (!currentTags.includes(tagId)) {
+    await taskStore.update(taskId, { tags: [...currentTags, tagId] })
+  }
+}
+
+const showTagManager = ref(false)
+
+const themeIcons: Record<string, string> = { auto: '💻', light: '☀️', dark: '🌙' }
+const themeOrder: Array<'auto' | 'light' | 'dark'> = ['auto', 'light', 'dark']
+
+function cycleTheme() {
+  const idx = themeOrder.indexOf(userStore.theme)
+  userStore.setTheme(themeOrder[(idx + 1) % themeOrder.length])
+}
+</script>
+
+<template>
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="app-title">TickTick</div>
+    </div>
+
+    <nav class="nav-section">
+      <RouterLink
+        v-for="sl in smartLists"
+        :key="sl.key"
+        :to="`/${sl.key}`"
+        class="nav-item"
+        :class="{ active: isSmartActive(sl.key) }"
+      >
+        <span class="nav-icon">{{ sl.icon }}</span>
+        <span class="nav-label">{{ sl.label }}</span>
+      </RouterLink>
+    </nav>
+
+    <div class="section-header">
+      <span>Outils</span>
+    </div>
+    <nav class="nav-section">
+      <RouterLink to="/calendar"   class="nav-item"><span class="nav-icon">📆</span><span class="nav-label">Calendrier</span></RouterLink>
+      <RouterLink to="/timeline"   class="nav-item"><span class="nav-icon">📊</span><span class="nav-label">Timeline</span></RouterLink>
+      <RouterLink to="/eisenhower" class="nav-item"><span class="nav-icon">⊞</span><span class="nav-label">Eisenhower</span></RouterLink>
+      <RouterLink to="/habits"     class="nav-item"><span class="nav-icon">🌱</span><span class="nav-label">Habitudes</span></RouterLink>
+      <RouterLink to="/focus"      class="nav-item"><span class="nav-icon">🍅</span><span class="nav-label">Focus</span></RouterLink>
+      <RouterLink to="/stats"      class="nav-item"><span class="nav-icon">📈</span><span class="nav-label">Statistiques</span></RouterLink>
+      <RouterLink to="/countdown"  class="nav-item"><span class="nav-icon">⏳</span><span class="nav-label">Compte à rebours</span></RouterLink>
+    </nav>
+
+    <div class="section-header">
+      <span>Mes listes</span>
+      <div style="display:flex;gap:2px">
+        <button class="icon-btn" title="Nouveau dossier" @click="showNewGroup = true">📁</button>
+        <button class="icon-btn" title="Nouvelle liste"  @click="showNewList = true">＋</button>
+      </div>
+    </div>
+
+    <nav class="nav-section list-nav">
+
+      <!-- ── Dossiers ── -->
+      <template v-for="g in projectStore.groups" :key="`g-${g.id}`">
+        <div
+          class="nav-item group-item"
+          :class="{ 'drop-target': groupDropOver === g.id }"
+          @click="toggleGroup(g.id)"
+          @contextmenu.prevent="showGroupMenu($event, g)"
+          @dragover="onGroupDragOver($event, g.id)"
+          @drop.prevent="onGroupDrop(g.id)"
+          @dragleave="onGroupDragLeave"
+        >
+          <span class="nav-icon">{{ collapsedGroups[g.id] ? '▶' : '▼' }}</span>
+          <span class="nav-label">{{ g.name }}</span>
+          <span class="group-count">{{ projectsInGroup(g.id).length }}</span>
+        </div>
+        <template v-if="!collapsedGroups[g.id]">
+          <div
+            v-for="p in projectsInGroup(g.id)"
+            :key="p.id"
+            class="nav-item project-item group-child"
+            :class="{ active: isProjectActive(p.id) }"
+            draggable="true"
+            @click="router.push(`/project/${p.id}`)"
+            @contextmenu.prevent="showProjectMenu($event, p)"
+            @dragstart="onProjectDragStart($event, p)"
+          >
+            <span class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+            <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
+            <span class="nav-label">{{ p.name }}</span>
+            <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+          </div>
+        </template>
+      </template>
+
+      <!-- ── Nouveau dossier ── -->
+      <div v-if="showNewGroup" class="new-list-input">
+        <input
+          v-model="newGroupName"
+          placeholder="Nom du dossier"
+          autofocus
+          @keydown.enter="addGroup"
+          @keydown.escape="showNewGroup = false; newGroupName = ''"
+        />
+      </div>
+
+      <!-- ── Zone de dépôt "sans dossier" ── -->
+      <div
+        v-if="draggingProjectId !== null"
+        class="drop-no-group"
+        :class="{ 'drop-target': groupDropOver === -1 }"
+        @dragover.prevent="groupDropOver = -1"
+        @drop.prevent="projectStore.update(draggingProjectId!, { group: null }); draggingProjectId = null; groupDropOver = null"
+        @dragleave="groupDropOver = null"
+      >Déposer ici pour retirer du dossier</div>
+
+      <!-- ── Projets sans dossier (triables) ── -->
+      <div
+        v-for="(p, idx) in ungroupedProjects"
+        :key="p.id"
+        class="nav-item project-item"
+        :class="{ active: isProjectActive(p.id), 'drag-over': listOverIdx === idx }"
+        draggable="true"
+        @click="router.push(`/project/${p.id}`)"
+        @contextmenu.prevent="showProjectMenu($event, p)"
+        @dragstart="(e) => { listDragStart(idx); onProjectDragStart(e, p) }"
+        @dragover="listDragOver($event, idx)"
+        @drop="listDrop(idx)"
+        @dragend="listDragEnd"
+      >
+        <span class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+        <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
+        <span class="nav-label">{{ p.name }}</span>
+        <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+      </div>
+
+      <!-- Inbox (non triable, non déplaçable) -->
+      <template v-if="projectStore.inbox">
+        <div
+          class="nav-item project-item"
+          :class="{ active: isSmartActive('inbox') }"
+          @click="router.push('/inbox')"
+          @contextmenu.prevent="showProjectMenu($event, projectStore.inbox!)"
+        >
+          <span class="nav-dot" />
+          <span class="nav-icon project-icon">📥</span>
+          <span class="nav-label">{{ projectStore.inbox.name }}</span>
+        </div>
+      </template>
+
+      <div v-if="showNewList" class="new-list-input">
+        <input
+          v-model="newListName"
+          placeholder="Nom de la liste"
+          autofocus
+          @keydown.enter="addList"
+          @keydown.escape="showNewList = false; newListName = ''"
+        />
+      </div>
+    </nav>
+
+    <!-- Section tags hiérarchiques -->
+    <template v-if="tagStore.tags.length || true">
+      <div class="section-header">
+        <span>Étiquettes</span>
+        <button class="icon-btn" title="Gérer les étiquettes" @click="showTagManager = true">⚙</button>
+      </div>
+      <nav class="nav-section">
+        <template v-for="tag in tagStore.rootTags" :key="tag.id">
+          <div
+            class="nav-item tag-item"
+            :class="{ active: route.name === 'tag' && route.params.id === String(tag.id), 'drop-target': tagDropOver === tag.id }"
+            @click="router.push(`/tag/${tag.id}`)"
+            @dragover.prevent="tagDropOver = tag.id"
+            @dragleave="tagDropOver = null"
+            @drop.prevent="dropTaskOnTag($event, tag.id)"
+          >
+            <span class="tag-dot" :style="tag.color ? `background:${tag.color}` : ''" />
+            <span class="nav-label">#{{ tag.name }}</span>
+            <span
+              v-if="tagStore.childrenOf(tag.id).length"
+              class="tag-chevron"
+              @click.stop="toggleTagCollapse(tag.id)"
+            >{{ collapsedTags[tag.id] ? '▶' : '▼' }}</span>
+          </div>
+          <template v-if="!collapsedTags[tag.id]">
+            <div
+              v-for="child in tagStore.childrenOf(tag.id)"
+              :key="child.id"
+              class="nav-item tag-item tag-child"
+              :class="{ active: route.name === 'tag' && route.params.id === String(child.id), 'drop-target': tagDropOver === child.id }"
+              @click="router.push(`/tag/${child.id}`)"
+              @dragover.prevent="tagDropOver = child.id"
+              @dragleave="tagDropOver = null"
+              @drop.prevent="dropTaskOnTag($event, child.id)"
+            >
+              <span class="tag-dot" :style="child.color ? `background:${child.color}` : ''" />
+              <span class="nav-label">#{{ child.name }}</span>
+            </div>
+          </template>
+        </template>
+      </nav>
+    </template>
+
+    <!-- Tag Manager Modal -->
+    <TagManager v-if="showTagManager" @close="showTagManager = false" />
+
+    <!-- Modals & menus -->
+    <ProjectEditor
+      v-if="editingProject"
+      :project="editingProject"
+      @close="editingProject = null"
+    />
+
+    <ProjectContextMenu
+      v-if="contextMenu?.type === 'project'"
+      :project="contextMenu.target"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @close="contextMenu = null"
+    />
+
+    <GroupContextMenu
+      v-if="contextMenu?.type === 'group'"
+      :group="contextMenu.target"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @close="contextMenu = null"
+    />
+
+    <div class="sidebar-footer">
+      <RouterLink to="/trash" class="nav-item" :class="{ active: isSmartActive('trash') }">
+        <span class="nav-icon">🗑</span>
+        <span class="nav-label">Corbeille</span>
+      </RouterLink>
+      <RouterLink to="/settings" class="nav-item">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">Paramètres</span>
+      </RouterLink>
+      <div class="sidebar-actions">
+        <button class="icon-btn theme-btn" :title="`Thème : ${userStore.theme}`" @click="cycleTheme">
+          {{ themeIcons[userStore.theme] }}
+        </button>
+        <button class="nav-item logout-btn" @click="logout">
+          <span class="nav-icon">⎋</span>
+          <span class="nav-label">Se déconnecter</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+</template>
+
+<style scoped>
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.sidebar-top { padding: 20px 16px 12px; }
+.app-title { font-size: 18px; font-weight: 700; color: var(--primary); }
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.nav-section { display: flex; flex-direction: column; padding: 2px 8px; margin-bottom: 8px; }
+.list-nav { flex: 1; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 13.5px;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.nav-item:hover { background: var(--bg-hover); }
+.nav-item.active,
+.nav-item.router-link-active { background: var(--bg-active); color: var(--primary); font-weight: 500; }
+
+.nav-icon { font-size: 15px; width: 20px; text-align: center; }
+.nav-label { flex: 1; }
+
+.nav-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--primary); flex-shrink: 0; margin-left: 5px;
+}
+
+.project-item { position: relative; }
+.project-edit-btn { opacity: 0; margin-left: auto; font-size: 16px; color: var(--text-muted); }
+.project-item:hover .project-edit-btn { opacity: 1; }
+.project-icon { font-size: 14px; }
+.drag-over { border-top: 2px solid var(--primary); }
+
+.group-item {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+.group-count {
+  margin-left: auto;
+  font-size: 11px;
+  background: var(--border);
+  border-radius: 8px;
+  padding: 1px 5px;
+}
+.group-child { padding-left: 22px !important; }
+
+.drop-target { background: color-mix(in srgb, var(--accent) 15%, var(--bg-hover)); border-radius: 8px; }
+
+.drop-no-group {
+  margin: 2px 4px;
+  padding: 4px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.new-list-input { padding: 4px 8px; }
+.new-list-input input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--primary);
+  border-radius: 6px;
+  background: var(--bg);
+  outline: none;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.tag-item { font-size: 13px; }
+.tag-child { padding-left: 24px !important; }
+.tag-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--primary); flex-shrink: 0;
+}
+.tag-chevron { font-size: 9px; color: var(--text-muted); margin-left: auto; }
+
+.sidebar-footer { margin-top: auto; padding: 8px; border-top: 1px solid var(--border); }
+.sidebar-actions { display: flex; align-items: center; gap: 4px; }
+.logout-btn { flex: 1; }
+.theme-btn { font-size: 16px; flex-shrink: 0; }
+</style>

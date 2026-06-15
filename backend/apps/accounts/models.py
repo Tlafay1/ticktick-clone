@@ -70,6 +70,10 @@ class UserSettings(models.Model):
     # Masquage des créneaux horaires inactifs dans les vues calendrier (module M30)
     hidden_hours_start = models.PositiveSmallIntegerField(default=0)  # 0–23
     hidden_hours_end = models.PositiveSmallIntegerField(default=0)    # 0–23 (0 = pas de masquage)
+    calendar_layout = models.CharField(max_length=16, default="classic")  # classic|modern
+    # Daily review (M26) : heure HH:MM de la notification du matin/soir, null = désactivé
+    daily_review_morning = models.TimeField(null=True, blank=True)
+    daily_review_evening = models.TimeField(null=True, blank=True)
 
     def __str__(self):
         return f"Settings<{self.user}>"

@@ -66,6 +66,10 @@ class Task(models.Model):
     due_date = models.DateTimeField(null=True, blank=True)
     is_all_day = models.BooleanField(default=True)
     timezone_name = models.CharField(max_length=64, blank=True)
+    # planned_date : date à laquelle l'utilisateur prévoit de travailler sur la tâche
+    planned_date = models.DateTimeField(null=True, blank=True)
+    # end_date : date de fin effective du travail (distincte de due_date)
+    end_date = models.DateTimeField(null=True, blank=True)
 
     # Récurrence (RFC 5545) — moteur complet au jalon 2.
     rrule = models.CharField(max_length=512, blank=True)
@@ -78,6 +82,8 @@ class Task(models.Model):
     sort_order = models.BigIntegerField(default=0)
     completed_at = models.DateTimeField(null=True, blank=True)
     trashed_at = models.DateTimeField(null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    estimated_pomos = models.PositiveSmallIntegerField(default=0)  # estimation Pomodoro (M21.2)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -292,6 +298,50 @@ class Template(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Attachment(models.Model):
+    """Pièce jointe à une tâche (module 1.1 / J5)."""
+
+    class AttachmentType(models.TextChoices):
+        FILE = "file"
+        IMAGE = "image"
+        AUDIO = "audio"
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="attachments")
+    file = models.FileField(upload_to="attachments/")
+    filename = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=128, blank=True)
+    size = models.PositiveIntegerField(default=0)
+    attachment_type = models.CharField(max_length=16, choices=AttachmentType, default=AttachmentType.FILE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+
+class TaskVersion(models.Model):
+    """Historique de versions de la description d'une tâche (module 27.1)."""
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="versions")
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+
+class SearchHistory(models.Model):
+    """Historique des recherches récentes (module 10.2)."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="search_history"
+    )
+    query = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
 
 class ActivityLog(models.Model):

@@ -1,12 +1,22 @@
 import type {
   ActivityEntry,
+  Attachment,
   CheckItem,
   Comment,
+  Countdown,
+  FocusSession,
+  Habit,
+  HabitCheckIn,
+  ProductivityScore,
   Project,
   ProjectGroup,
+  Reminder,
   Section,
+  StatsSummary,
   Tag,
   Task,
+  TaskVersion,
+  Template,
   User,
   UserSettings,
 } from '@/types'
@@ -47,6 +57,8 @@ export const projectsApi = {
     http.patch<ProjectGroup>(`/api/project-groups/${id}/`, data),
   removeGroup: (id: number) => http.delete(`/api/project-groups/${id}/`),
   createSection: (data: Partial<Section>) => http.post<Section>('/api/sections/', data),
+  updateSection: (id: number, data: Partial<Section>) => http.patch<Section>(`/api/sections/${id}/`, data),
+  removeSection: (id: number) => http.delete(`/api/sections/${id}/`),
 }
 
 export type TaskQuery = Record<string, string | number | boolean | undefined>
@@ -83,10 +95,81 @@ export const commentsApi = {
   remove: (id: number) => http.delete(`/api/comments/${id}/`),
 }
 
+export const remindersApi = {
+  list: (taskId: number) => http.get<Reminder[]>(`/api/reminders/?task=${taskId}`),
+  create: (data: Partial<Reminder>) => http.post<Reminder>('/api/reminders/', data),
+  remove: (id: number) => http.delete(`/api/reminders/${id}/`),
+}
+
 export const tagsApi = {
   list: () => http.get<Tag[]>('/api/tags/'),
   create: (data: Partial<Tag>) => http.post<Tag>('/api/tags/', data),
   update: (id: number, data: Partial<Tag>) => http.patch<Tag>(`/api/tags/${id}/`, data),
   remove: (id: number) => http.delete(`/api/tags/${id}/`),
   merge: (id: number, target: number) => http.post<Tag>(`/api/tags/${id}/merge/`, { target }),
+}
+
+export const habitsApi = {
+  list: () => http.get<Habit[]>('/api/habits/'),
+  create: (data: Partial<Habit>) => http.post<Habit>('/api/habits/', data),
+  update: (id: number, data: Partial<Habit>) => http.patch<Habit>(`/api/habits/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/habits/${id}/`),
+  checkIn: (id: number, data: { date: string; quantity?: number; note?: string }) =>
+    http.post<HabitCheckIn>(`/api/habits/${id}/checkins/`, data),
+  checkIns: (id: number) => http.get<HabitCheckIn[]>(`/api/habits/${id}/checkins/`),
+  presets: () => http.get<Partial<Habit>[]>('/api/habits/presets/'),
+}
+
+export const focusApi = {
+  list: () => http.get<FocusSession[]>('/api/focus-sessions/'),
+  create: (data: Partial<FocusSession>) => http.post<FocusSession>('/api/focus-sessions/', data),
+  update: (id: number, data: Partial<FocusSession>) => http.patch<FocusSession>(`/api/focus-sessions/${id}/`, data),
+  stats: () => http.get<{ total_seconds: number; by_list: unknown[]; by_tag: unknown[] }>('/api/focus-sessions/stats/'),
+}
+
+export const countdownApi = {
+  list: () => http.get<Countdown[]>('/api/countdowns/'),
+  create: (data: Partial<Countdown>) => http.post<Countdown>('/api/countdowns/', data),
+  update: (id: number, data: Partial<Countdown>) => http.patch<Countdown>(`/api/countdowns/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/countdowns/${id}/`),
+}
+
+export const attachmentsApi = {
+  list: (taskId: number) => http.get<Attachment[]>(`/api/attachments/?task=${taskId}`),
+  upload: async (taskId: number, file: File): Promise<Attachment> => {
+    const fd = new FormData()
+    fd.append('task', String(taskId))
+    fd.append('file', file)
+    const res = await fetch('/api/attachments/', {
+      method: 'POST',
+      headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+      body: fd,
+    })
+    if (!res.ok) throw new Error('Upload failed')
+    return res.json()
+  },
+  remove: (id: number) => http.delete(`/api/attachments/${id}/`),
+}
+
+export const versionsApi = {
+  list: (taskId: number) => http.get<TaskVersion[]>(`/api/tasks/${taskId}/versions/`),
+  restore: (taskId: number, versionId: number) =>
+    http.post<Task>(`/api/tasks/${taskId}/versions/${versionId}/restore/`),
+}
+
+export const statsApi = {
+  summary: () => http.get<StatsSummary>('/api/stats/summary/'),
+  heatmap: () => http.get<Array<{ date: string; count: number }>>('/api/stats/heatmap/'),
+  monthly: () => http.get<Array<{ month: string; count: number }>>('/api/stats/monthly/'),
+  score: () => http.get<ProductivityScore>('/api/stats/productivity-score/'),
+}
+
+export const templatesApi = {
+  list: () => http.get<Template[]>('/api/templates/'),
+  get: (id: number) => http.get<Template>(`/api/templates/${id}/`),
+  create: (data: { name: string; scope: 'task' | 'project'; data: object }) =>
+    http.post<Template>('/api/templates/', data),
+  update: (id: number, data: Partial<Template>) =>
+    http.patch<Template>(`/api/templates/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/templates/${id}/`),
 }

@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import vue from '@vitejs/plugin-vue'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [vue()],
@@ -9,8 +9,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
-      '/media': 'http://localhost:8000',
+      '/api': 'http://localhost:8001',
+      '/media': 'http://localhost:8001',
     },
+  },
+  test: {
+    setupFiles: ['./src/test-setup.ts'],
   },
 })

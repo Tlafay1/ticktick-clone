@@ -1,4 +1,5 @@
-/** Client HTTP minimal : JSON + JWT avec refresh automatique. */
+/** Client HTTP minimal : JSON + JWT avec refresh automatique, offline queue. */
+import { enqueue } from '@/lib/offlineQueue'
 
 const ACCESS_KEY = 'tt.access'
 const REFRESH_KEY = 'tt.refresh'
@@ -28,6 +29,10 @@ export class ApiError extends Error {
     this.status = status
     this.data = data
   }
+}
+
+export class OfflineError extends Error {
+  constructor() { super('hors-ligne — mutation mise en file') }
 }
 
 let refreshing: Promise<boolean> | null = null
@@ -62,11 +67,21 @@ export async function request<T>(
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (tokens.access) headers.Authorization = `Bearer ${tokens.access}`
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+  } catch {
+    // Réseau indisponible — on enqueue les mutations (pas les GET)
+    if (method !== 'GET') {
+      await enqueue(method as 'POST' | 'PATCH' | 'PUT' | 'DELETE', url, body)
+      throw new OfflineError()
+    }
+    throw new Error('réseau indisponible')
+  }
 
   if (res.status === 401 && retry && tokens.refresh) {
     if (await tryRefresh()) return request(method, url, body, false)

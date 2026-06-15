@@ -11,6 +11,8 @@ export interface UserSettings {
   snooze_options: unknown[]
   nlp_enabled: boolean
   nlp_strip_text: boolean
+  daily_review_morning: string | null
+  daily_review_evening: string | null
 }
 
 export interface User {
@@ -34,6 +36,16 @@ export interface Section {
   name: string
   sort_order: number
   collapsed: boolean
+  is_done: boolean
+}
+
+export interface FilterRule {
+  type: 'and' | 'or'
+  rules: Array<{
+    field: 'priority' | 'status' | 'due' | 'tag' | 'project' | 'assignee'
+    op: 'eq' | 'neq' | 'lt' | 'gt' | 'in' | 'not_in' | 'is_null' | 'is_not_null'
+    value?: unknown
+  }>
 }
 
 export interface Project {
@@ -47,7 +59,11 @@ export interface Project {
   is_inbox: boolean
   archived: boolean
   hidden_from_smart_lists: boolean
+  is_smart: boolean
+  filter_rules: FilterRule[]
   sections: Section[]
+  bg_color: string
+  bg_image_url: string
 }
 
 export interface Tag {
@@ -90,11 +106,21 @@ export interface Task {
   repeat_from: 'due' | 'completion'
   tags: number[]
   sort_order: number
+  estimated_pomos: number
   completed_at: string | null
   trashed_at: string | null
   created_at: string
   modified_at: string
   check_items: CheckItem[]
+}
+
+export interface Reminder {
+  id: number
+  task: number
+  trigger_type: 'relative' | 'absolute'
+  minutes_before: number | null
+  trigger_at: string | null
+  is_annoying: boolean
 }
 
 export interface Comment {
@@ -105,9 +131,97 @@ export interface Comment {
   edited_at: string | null
 }
 
+export interface Habit {
+  id: number
+  name: string
+  icon: string
+  color: string
+  frequency: 'daily' | 'weekly' | 'specific_days' | 'interval' | 'weekly_goal'
+  freq_config: Record<string, unknown>
+  goal_type: 'binary' | 'numeric'
+  goal_value: number
+  goal_unit: string
+  motto: string
+  check_in_mode: 'auto' | 'manual' | 'binary'
+  auto_increment: boolean
+  sort_order: number
+  archived: boolean
+  created_at: string
+  reminders: Array<{ id: number; time: string }>
+  streak: number
+  max_streak: number
+}
+
+export interface HabitCheckIn {
+  id: number
+  date: string
+  quantity: number
+  note: string
+  completed: boolean
+  created_at: string
+}
+
+export interface FocusSession {
+  id: number
+  task: number | null
+  mode: 'pomodoro' | 'stopwatch'
+  session_type: 'work' | 'short_break' | 'long_break'
+  start_at: string
+  end_at: string | null
+  duration_seconds: number
+}
+
+export interface Countdown {
+  id: number
+  title: string
+  target_date: string
+  description: string
+  pinned: boolean
+  created_at: string
+  days_remaining: number
+}
+
+export interface StatsSummary {
+  completed_today: number
+  overdue: number
+  by_list: Array<{ project__name: string; count: number }>
+  best_hours: Array<{ hour: number; count: number }>
+}
+
+export interface ProductivityScore {
+  score: number
+  level: string
+  on_time: number
+  late: number
+}
+
+export interface Attachment {
+  id: number
+  task: number
+  filename: string
+  content_type: string
+  size: number
+  url: string
+  created_at: string
+}
+
+export interface TaskVersion {
+  id: number
+  task: number
+  description: string
+  created_at: string
+}
+
 export interface ActivityEntry {
   id: number
   action: string
   payload: Record<string, unknown>
   created_at: string
+}
+
+export interface Template {
+  id: number
+  scope: 'task' | 'project'
+  name: string
+  data: Partial<Task> | Partial<Project>
 }

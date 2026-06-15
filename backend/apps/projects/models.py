@@ -48,6 +48,8 @@ class Project(models.Model):
     filter_rules = models.JSONField(default=list, blank=True)
     grouping = models.CharField(max_length=50, null=True, blank=True)
     sorting = models.CharField(max_length=50, null=True, blank=True)
+    bg_color = models.CharField(max_length=32, blank=True)
+    bg_image_url = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 
@@ -70,6 +72,7 @@ class Section(models.Model):
     name = models.CharField(max_length=120)
     sort_order = models.BigIntegerField(default=0)
     collapsed = models.BooleanField(default=False)
+    is_done = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["sort_order", "id"]

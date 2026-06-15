@@ -1,8 +1,10 @@
 /* Design tokens — palette calquée sur TickTick. */
-:root {
+:root,
+[data-theme='light'] {
   --primary: #4772fa;
   --primary-hover: #3a63e0;
   --primary-soft: #eef3fe;
+  --accent: #4772fa;
 
   /* Priorités TickTick : haute=rouge, moyenne=jaune, basse=bleu, aucune=gris */
   --prio-high: #e0383e;
@@ -22,6 +24,33 @@
   --radius: 8px;
   --sidebar-width: 240px;
   --detail-width: 360px;
+}
+
+/* Presets d'accent (écrasent --primary dans les deux thèmes) */
+[data-accent='red']    { --primary: #e03131; --primary-hover: #c92a2a; --primary-soft: #fff0f0; }
+[data-accent='green']  { --primary: #2f9e44; --primary-hover: #2b8a3e; --primary-soft: #ebfbee; }
+[data-accent='orange'] { --primary: #e8590c; --primary-hover: #d9480f; --primary-soft: #fff4e6; }
+[data-accent='purple'] { --primary: #7048e8; --primary-hover: #5f3dc4; --primary-soft: #f3f0ff; }
+[data-accent='pink']   { --primary: #d6336c; --primary-hover: #c2255c; --primary-soft: #fff0f6; }
+[data-accent='teal']   { --primary: #0c8599; --primary-hover: #0b7285; --primary-soft: #e3fafc; }
+
+[data-theme='dark'] {
+  --primary: #5b87ff;
+  --primary-hover: #4772fa;
+  --primary-soft: #1e2a4a;
+  --prio-high: #f05454;
+  --prio-medium: #fcc419;
+  --prio-low: #5b87ff;
+  --prio-none: #6b6f76;
+  --bg: #1c1e23;
+  --bg-sidebar: #15171b;
+  --bg-hover: #25282f;
+  --bg-active: #1e2a4a;
+  --border: #2e3038;
+  --text: #e4e6ea;
+  --text-secondary: #9aa0ab;
+  --text-muted: #5c6370;
+  --danger: #f05454;
 }
 
 * { box-sizing: border-box; }

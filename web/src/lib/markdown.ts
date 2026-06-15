@@ -3,8 +3,17 @@ import { marked } from 'marked'
 
 marked.setOptions({ gfm: true, breaks: true })
 
+// M20 — résolution de deep links dans le Markdown.
+// `app://task/123` et `/task/123` sont convertis en liens cliquables
+// avant le rendu Markdown, pour qu'ils apparaissent en blocs inline.
+const DEEP_LINK_RE = /(app:\/\/task\/(\d+))/g
+
+export function resolveDeepLinks(source: string): string {
+  return source.replace(DEEP_LINK_RE, (_m, url, id) => `[Tâche #${id}](${url})`)
+}
+
 export function renderMarkdown(source: string): string {
-  const html = marked.parse(source, { async: false })
+  const html = marked.parse(resolveDeepLinks(source), { async: false })
   return DOMPurify.sanitize(html, { ADD_ATTR: ['type', 'checked'] })
 }
 

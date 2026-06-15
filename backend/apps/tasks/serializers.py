@@ -2,7 +2,10 @@ from rest_framework import serializers
 
 from apps.tags.models import Tag
 
-from .models import MAX_SUBTASK_DEPTH, ActivityLog, CheckItem, Comment, Reminder, Task, Template
+from .models import (
+    MAX_SUBTASK_DEPTH, ActivityLog, Attachment, CheckItem, Comment,
+    Reminder, SearchHistory, Task, TaskVersion, Template,
+)
 
 
 class TemplateSerializer(serializers.ModelSerializer):
@@ -63,6 +66,41 @@ class ActivityLogSerializer(serializers.ModelSerializer):
         fields = ["id", "action", "payload", "created_at"]
 
 
+class AttachmentSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    def get_url(self, obj):
+        request = self.context.get("request")
+        if obj.file:
+            return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+        return None
+
+    class Meta:
+        model = Attachment
+        fields = ["id", "task", "file", "filename", "content_type", "size",
+                  "attachment_type", "url", "created_at"]
+        read_only_fields = ["filename", "content_type", "size", "attachment_type", "url", "created_at"]
+
+    def validate_task(self, task):
+        if task.user != self.context["request"].user:
+            raise serializers.ValidationError("Tâche inconnue.")
+        return task
+
+
+class TaskVersionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskVersion
+        fields = ["id", "task", "description", "created_at"]
+        read_only_fields = ["created_at"]
+
+
+class SearchHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SearchHistory
+        fields = ["id", "query", "created_at"]
+        read_only_fields = ["created_at"]
+
+
 class TaskSerializer(serializers.ModelSerializer):
     check_items = CheckItemSerializer(many=True, read_only=True)
     tags = serializers.PrimaryKeyRelatedField(
@@ -74,13 +112,13 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = [
             "id", "project", "section", "parent", "title", "description",
             "status", "priority", "progress", "is_pinned", "pinned_at",
-            "start_date", "due_date", "is_all_day", "timezone_name",
+            "start_date", "due_date", "planned_date", "end_date", "is_all_day", "timezone_name",
             "rrule", "repeat_from", "tags", "sort_order",
-            "completed_at", "trashed_at", "created_at", "modified_at",
-            "check_items",
+            "completed_at", "trashed_at", "archived_at", "created_at", "modified_at",
+            "check_items", "estimated_pomos",
         ]
         read_only_fields = [
-            "completed_at", "trashed_at", "pinned_at", "created_at", "modified_at",
+            "completed_at", "trashed_at", "archived_at", "pinned_at", "created_at", "modified_at",
         ]
 
     def validate_project(self, project):
@@ -126,6 +164,9 @@ class TaskSerializer(serializers.ModelSerializer):
                 instance.pinned_at = timezone.now()
             elif not validated_data["is_pinned"]:
                 instance.pinned_at = None
+        # Sauvegarder la version de description avant modification
+        if "description" in validated_data and validated_data["description"] != instance.description:
+            TaskVersion.objects.create(task=instance, description=instance.description)
         tracked = {"title", "due_date", "start_date", "priority", "project"}
         changed = sorted(
             f for f, v in validated_data.items()

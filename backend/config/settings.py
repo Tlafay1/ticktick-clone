@@ -33,7 +33,20 @@ INSTALLED_APPS = [
     "apps.projects",
     "apps.tasks",
     "apps.tags",
+    "apps.calendars",
+    "apps.stats",
+    "apps.habits",
+    "apps.focus",
+    "apps.countdown",
+    "channels",
 ]
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [(os.environ.get("REDIS_HOST", "localhost"), 6379)]},
+    }
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
