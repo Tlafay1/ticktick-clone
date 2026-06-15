@@ -1,3 +1,5 @@
+import secrets
+
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.db import models
 
@@ -77,6 +79,29 @@ class UserSettings(models.Model):
 
     def __str__(self):
         return f"Settings<{self.user}>"
+
+
+def generate_api_key():
+    return secrets.token_urlsafe(32)
+
+
+class ApiKey(models.Model):
+    """Clé d'API longue durée pour les agents (ex : agent IA Gemini).
+
+    Évite le va-et-vient JWT 7j/180j : l'agent envoie
+    `Authorization: Api-Key <token>` sur chaque requête.
+    """
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="api_keys"
+    )
+    key = models.CharField(max_length=64, unique=True, default=generate_api_key, db_index=True)
+    label = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"ApiKey<{self.user} {self.label or self.key[:8]}…>"
 
 
 class PushSubscription(models.Model):

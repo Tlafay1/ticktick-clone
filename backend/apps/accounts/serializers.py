@@ -1,9 +1,16 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
-from .models import UserSettings
+from .models import ApiKey, UserSettings
 
 User = get_user_model()
+
+
+class ApiKeySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ApiKey
+        fields = ["id", "key", "label", "created_at", "last_used_at"]
+        read_only_fields = ["id", "key", "created_at", "last_used_at"]
 
 
 class RegisterSerializer(serializers.ModelSerializer):
