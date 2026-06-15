@@ -485,34 +485,34 @@ function cycleTheme() {
   .sidebar.open { transform: translateX(0); }
 }
 
-.sidebar-top { padding: 20px 16px 12px; }
-.app-title { font-size: 18px; font-weight: 700; color: var(--primary); }
+.sidebar-top { padding: 16px 12px 10px; }
+.app-title { font-size: 15px; font-weight: 600; color: var(--primary); }
 
 .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px 4px;
-  font-size: 11px;
+  padding: 10px 14px 3px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.7px;
   color: var(--text-muted);
 }
 
-.nav-section { display: flex; flex-direction: column; padding: 2px 8px; margin-bottom: 8px; }
+.nav-section { display: flex; flex-direction: column; padding: 2px 6px; margin-bottom: 4px; }
 .list-nav { flex: 1; }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border-radius: 8px;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
   color: var(--text);
   text-decoration: none;
   cursor: pointer;
-  font-size: 13.5px;
+  font-size: 13px;
   border: none;
   background: none;
   width: 100%;
@@ -520,7 +520,12 @@ function cycleTheme() {
 }
 .nav-item:hover { background: var(--bg-hover); }
 .nav-item.active,
-.nav-item.router-link-active { background: var(--bg-active); color: var(--primary); font-weight: 500; }
+.nav-item.router-link-active {
+  background: var(--bg-hover);
+  color: var(--primary);
+  font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
 
 .nav-icon { font-size: 15px; width: 20px; text-align: center; }
 .nav-label { flex: 1; }
