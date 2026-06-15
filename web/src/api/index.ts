@@ -184,3 +184,17 @@ export const templatesApi = {
     http.patch<Template>(`/api/templates/${id}/`, data),
   remove: (id: number) => http.delete(`/api/templates/${id}/`),
 }
+
+export interface ApiKeyInfo {
+  id: number
+  key: string
+  label: string
+  created_at: string
+  last_used_at: string | null
+}
+
+export const apiKeysApi = {
+  list: () => http.get<ApiKeyInfo[]>('/api/api-keys/'),
+  create: (label = '') => http.post<ApiKeyInfo>('/api/api-keys/', { label }),
+  remove: (id: number) => http.delete(`/api/api-keys/${id}/`),
+}

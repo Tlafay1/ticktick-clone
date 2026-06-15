@@ -5,6 +5,7 @@ import { useProjectStore } from '@/stores/projects'
 import { useRouter } from 'vue-router'
 import { onMounted, ref } from 'vue'
 import { enablePushNotifications } from '@/composables/usePushNotifications'
+import { apiKeysApi, type ApiKeyInfo } from '@/api'
 
 const userStore = useUserStore()
 const tagStore = useTagStore()
@@ -14,12 +15,6 @@ const router = useRouter()
 function enablePush() {
   enablePushNotifications()
 }
-
-onMounted(async () => {
-  if (!userStore.user) userStore.load()
-  if (!tagStore.tags.length) await tagStore.load()
-  if (!projectStore.projects.length) await projectStore.load()
-})
 
 const newTagName = ref('')
 const newTagColor = ref('#4772fa')
@@ -99,6 +94,36 @@ const soundOptions = [
   { value: 'bell', label: 'Cloche' },
   { value: 'none', label: 'Aucun son' },
 ]
+
+// --- Clés d'API ---
+const apiKeys = ref<ApiKeyInfo[]>([])
+const newKeyLabel = ref('')
+const freshKey = ref<ApiKeyInfo | null>(null)
+
+async function loadApiKeys() {
+  apiKeys.value = await apiKeysApi.list()
+}
+
+async function createApiKey() {
+  const key = await apiKeysApi.create(newKeyLabel.value.trim())
+  freshKey.value = key
+  newKeyLabel.value = ''
+  apiKeys.value.push(key)
+}
+
+async function deleteApiKey(id: number) {
+  if (!confirm('Supprimer cette clé ? Les agents qui l\'utilisent ne pourront plus se connecter.')) return
+  await apiKeysApi.remove(id)
+  apiKeys.value = apiKeys.value.filter(k => k.id !== id)
+  if (freshKey.value?.id === id) freshKey.value = null
+}
+
+onMounted(async () => {
+  if (!userStore.user) userStore.load()
+  if (!tagStore.tags.length) await tagStore.load()
+  if (!projectStore.projects.length) await projectStore.load()
+  await loadApiKeys()
+})
 </script>
 
 <template>
@@ -336,6 +361,32 @@ const soundOptions = [
         </div>
       </section>
 
+      <!-- Clés d'API longue durée (agents IA / scripts) -->
+      <section class="settings-section">
+        <h2 class="section-title">Clés d'API</h2>
+        <p class="section-hint">Utilisées par les agents IA ou scripts. Envoyez le header <code>Authorization: Api-Key &lt;clé&gt;</code> sur chaque requête.</p>
+
+        <div v-if="freshKey" class="key-reveal">
+          <strong>Nouvelle clé créée — copiez-la maintenant, elle ne sera plus affichée :</strong>
+          <code class="key-value">{{ freshKey.key }}</code>
+          <button class="btn btn-ghost" style="font-size:12px" @click="freshKey = null">Masquer</button>
+        </div>
+
+        <div v-for="k in apiKeys" :key="k.id" class="setting-row">
+          <div>
+            <div class="setting-label">{{ k.label || '(sans nom)' }}</div>
+            <div class="key-meta">Créée le {{ new Date(k.created_at).toLocaleDateString('fr-FR') }}{{ k.last_used_at ? ' · Utilisée le ' + new Date(k.last_used_at).toLocaleDateString('fr-FR') : '' }}</div>
+          </div>
+          <button class="btn btn-ghost danger-btn" @click="deleteApiKey(k.id)">Supprimer</button>
+        </div>
+        <div v-if="!apiKeys.length" class="empty-hint">Aucune clé d'API.</div>
+
+        <div class="new-key-form">
+          <input v-model="newKeyLabel" class="setting-input" placeholder="Nom de la clé (ex : agent-gemini)" @keydown.enter="createApiKey" />
+          <button class="btn btn-primary" @click="createApiKey">Générer</button>
+        </div>
+      </section>
+
       <section class="settings-section">
         <h2 class="section-title">Smart lists visibles</h2>
         <p class="section-hint">Choisissez quelles smart lists apparaissent dans la sidebar.</p>
@@ -510,6 +561,32 @@ const soundOptions = [
 .tag-action { font-size: 14px; }
 .danger-btn { color: var(--danger, #e03131); }
 .empty-hint { color: var(--text-muted); font-size: 13px; }
+
+/* Clés d'API */
+.key-reveal {
+  background: var(--bg-hover);
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.key-value {
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--bg);
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  word-break: break-all;
+  user-select: all;
+}
+.key-meta { font-size: 12px; color: var(--text-muted); }
+.new-key-form { display: flex; gap: 8px; margin-top: 12px; }
+.new-key-form .setting-input { flex: 1; }
 
 @media (max-width: 768px) {
   .settings-layout { flex-direction: column; }
