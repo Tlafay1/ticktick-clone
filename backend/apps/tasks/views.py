@@ -13,6 +13,7 @@ from rest_framework.response import Response
 
 from apps.projects.views import OwnedModelViewSet
 
+from .ticktick_import import import_ticktick_csv, looks_like_ticktick_csv
 from .models import (
     Attachment, CheckItem, Comment, Reminder, SearchHistory,
     Task, TaskVersion, Template,
@@ -255,6 +256,12 @@ class TaskViewSet(OwnedModelViewSet):
 
         if file:
             content = file.read().decode("utf-8")
+            # Format TickTick officiel (dossiers/listes/tags/dates/sous-tâches/kanban).
+            if looks_like_ticktick_csv(content):
+                dedupe = request.query_params.get("dedupe") == "1"
+                stats = import_ticktick_csv(request.user, content, dedupe=dedupe)
+                return Response(stats, status=status.HTTP_201_CREATED)
+            # Fallback CSV générique (titre/description/priorité → Inbox).
             reader = csv.DictReader(io.StringIO(content))
             from apps.projects.models import Project
             inbox_project = Project.objects.filter(user=request.user, is_inbox=True).first()
