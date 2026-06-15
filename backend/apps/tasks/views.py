@@ -89,9 +89,9 @@ class TaskViewSet(OwnedModelViewSet):
         # masquées et archivées (module 25.2).
         if params.get("smart") in ("1", "true"):
             qs = qs.visible_in_smart_lists().filter(project__archived=False)
-        q = params.get("q")
-        if q:
-            # Sauvegarde de la recherche
+        q = params.get("q", "").strip()
+        # "*" et les chaînes génériques sont traités comme « pas de filtre texte ».
+        if q and q not in ("*", "%", ".*", "**"):
             SearchHistory.objects.create(user=self.request.user, query=q)
             qs = qs.filter(
                 Q(title__icontains=q)
