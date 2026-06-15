@@ -13,7 +13,8 @@ import TaskDetail from '@/components/TaskDetail.vue'
 import SearchBar from '@/components/SearchBar.vue'
 import { tasksApi } from '@/api'
 import { useDragSort } from '@/composables/useDragSort'
-import { tasksToCSV, tasksToJSON, downloadFile, parseCSV, parseJSON } from '@/lib/exportImport'
+import { tasksToCSV, tasksToJSON, downloadFile, parseJSON } from '@/lib/exportImport'
+import { pushToast } from '@/composables/useToast'
 import { useRealtimeSync } from '@/composables/useRealtimeSync'
 import { useReminderNotifications } from '@/composables/useReminderNotifications'
 import { flush } from '@/lib/offlineQueue'
@@ -164,18 +165,30 @@ async function importFile() {
   input.onchange = async () => {
     const file = input.files?.[0]
     if (!file) return
-    const text = await file.text()
-    const parsed = file.name.endsWith('.json') ? parseJSON(text) : parseCSV(text)
-    for (const t of parsed) {
-      const created = await tasksApi.create({
-        title: t.title,
-        description: t.description,
-        status: t.status ?? 0,
-        priority: t.priority ?? 0,
-        due_date: t.due_date ?? null,
-        project: currentProjectId.value ?? projectStore.inbox?.id,
-      })
-      taskStore.tasks.unshift(created)
+    if (file.name.endsWith('.csv')) {
+      try {
+        const stats = await tasksApi.importFile(file)
+        await projectStore.load()
+        await loadView()
+        const n = stats.imported
+        pushToast(`Import terminé : ${n} tâche${n !== 1 ? 's' : ''} importée${n !== 1 ? 's' : ''}`, 'success')
+      } catch {
+        pushToast("Échec de l'import CSV", 'error')
+      }
+    } else {
+      const text = await file.text()
+      const parsed = parseJSON(text)
+      for (const t of parsed) {
+        const created = await tasksApi.create({
+          title: t.title,
+          description: t.description,
+          status: t.status ?? 0,
+          priority: t.priority ?? 0,
+          due_date: t.due_date ?? null,
+          project: currentProjectId.value ?? projectStore.inbox?.id,
+        })
+        taskStore.tasks.unshift(created)
+      }
     }
   }
   input.click()
