@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useTaskStore } from '@/stores/tasks'
 import { useTagStore } from '@/stores/tags'
 import { checkItemsApi, commentsApi, tasksApi } from '@/api'
-import type { CheckItem, Comment, ActivityEntry } from '@/types'
+import type { CheckItem, Comment, ActivityEntry, Task } from '@/types'
 import { renderMarkdown, toggleMarkdownCheckbox } from '@/lib/markdown'
 import { toLocalInput } from '@/lib/dates'
 import RecurrenceEditor from './RecurrenceEditor.vue'
@@ -23,6 +23,8 @@ const descDraft = ref('')
 const editingDesc = ref(false)
 const checkItems = ref<CheckItem[]>([])
 const newItemTitle = ref('')
+const subtasks = ref<Task[]>([])
+const newSubtaskTitle = ref('')
 const comments = ref<Comment[]>([])
 const newComment = ref('')
 const loadingComments = ref(false)
@@ -39,6 +41,7 @@ watch(task, async (t) => {
     descDraft.value = t.description
     checkItems.value = [...t.check_items]
     showTagPicker.value = false
+    subtasks.value = await tasksApi.list({ parent: t.id })
     loadingComments.value = true
     try {
       comments.value = await commentsApi.list(t.id)
@@ -113,6 +116,38 @@ async function removeCheckItem(item: CheckItem) {
 async function trashTask() {
   if (!task.value) return
   await taskStore.remove(task.value.id)
+}
+
+// ----- Sous-tâches (Task.parent, Tier 1) -----
+
+async function addSubtask() {
+  if (!task.value || !newSubtaskTitle.value.trim()) return
+  const child = await tasksApi.create({
+    title: newSubtaskTitle.value.trim(),
+    parent: task.value.id,
+    project: task.value.project,
+  })
+  subtasks.value.push(child)
+  newSubtaskTitle.value = ''
+}
+
+async function toggleSubtask(child: Task) {
+  const updated = child.status === 2
+    ? await tasksApi.reopen(child.id)
+    : await tasksApi.complete(child.id)
+  const idx = subtasks.value.findIndex((x) => x.id === child.id)
+  if (idx >= 0) subtasks.value[idx] = updated
+}
+
+async function removeSubtask(child: Task) {
+  await tasksApi.remove(child.id)
+  subtasks.value = subtasks.value.filter((x) => x.id !== child.id)
+}
+
+function openSubtask(child: Task) {
+  // Charge l'enfant dans la liste si absent, puis le sélectionne.
+  if (!taskStore.tasks.find((t) => t.id === child.id)) taskStore.tasks.push(child)
+  taskStore.select(child.id)
 }
 
 async function toggleTag(tagId: number) {
@@ -398,6 +433,36 @@ function formatCommentDate(iso: string) {
       <TemplateManager :task="task" />
     </div>
 
+    <!-- Sous-tâches (Tier 1) -->
+    <div class="detail-field">
+      <label class="field-label">↳ Sous-tâches <span v-if="subtasks.length" class="count-badge">{{ subtasks.filter(s => s.status === 2).length }}/{{ subtasks.length }}</span></label>
+      <div class="subtasks">
+        <div
+          v-for="child in subtasks"
+          :key="child.id"
+          class="subtask-item"
+          :class="{ done: child.status === 2 }"
+        >
+          <span
+            class="task-checkbox"
+            :class="[`p${child.priority}`, { checked: child.status === 2 }]"
+            @click="toggleSubtask(child)"
+          >
+            <svg v-if="child.status === 2" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L3.8 7.5L8.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <span class="subtask-title" @click="openSubtask(child)">{{ child.title }}</span>
+          <button class="remove-item icon-btn" @click="removeSubtask(child)">✕</button>
+        </div>
+        <div class="check-item new-item">
+          <input
+            v-model="newSubtaskTitle"
+            placeholder="Ajouter une sous-tâche"
+            @keydown.enter="addSubtask"
+          />
+        </div>
+      </div>
+    </div>
+
     <!-- Check items -->
     <div class="detail-field">
       <label class="field-label">☑ Checklist</label>
@@ -650,6 +715,29 @@ function formatCommentDate(iso: string) {
   background: none;
   outline: none;
   color: var(--text);
+}
+
+/* Sous-tâches */
+.subtasks { display: flex; flex-direction: column; gap: 2px; }
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+}
+.subtask-item .task-checkbox { width: 16px; height: 16px; cursor: pointer; }
+.subtask-title { flex: 1; font-size: 13.5px; cursor: pointer; }
+.subtask-title:hover { color: var(--primary); }
+.subtask-item.done .subtask-title { text-decoration: line-through; color: var(--text-muted); }
+.subtask-item .remove-item { opacity: 0; }
+.subtask-item:hover .remove-item { opacity: 1; }
+.count-badge {
+  font-size: 10px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-left: 4px;
 }
 
 /* Checklist */

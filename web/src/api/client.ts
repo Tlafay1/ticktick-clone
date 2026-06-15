@@ -1,5 +1,6 @@
 /** Client HTTP minimal : JSON + JWT avec refresh automatique, offline queue. */
 import { enqueue } from '@/lib/offlineQueue'
+import { pushToast } from '@/composables/useToast'
 
 const ACCESS_KEY = 'tt.access'
 const REFRESH_KEY = 'tt.refresh'
@@ -88,10 +89,29 @@ export async function request<T>(
     window.location.href = '/login'
   }
   if (!res.ok) {
-    throw new ApiError(res.status, await res.json().catch(() => null))
+    const data = await res.json().catch(() => null)
+    // Surface les échecs de mutation (plus d'échec silencieux).
+    if (method !== 'GET') {
+      pushToast(extractError(data) ?? "Échec de l'enregistrement", 'error')
+    }
+    throw new ApiError(res.status, data)
   }
   if (res.status === 204) return undefined as T
   return res.json()
+}
+
+/** Extrait un message lisible d'une réponse d'erreur DRF (string, {detail}, {champ:[…]}). */
+function extractError(data: unknown): string | null {
+  if (!data) return null
+  if (typeof data === 'string') return data
+  if (typeof data === 'object') {
+    const obj = data as Record<string, unknown>
+    if (typeof obj.detail === 'string') return obj.detail
+    const first = Object.values(obj)[0]
+    if (Array.isArray(first) && typeof first[0] === 'string') return first[0]
+    if (typeof first === 'string') return first
+  }
+  return null
 }
 
 export const http = {
