@@ -204,6 +204,10 @@ class CloneClient:
         data = await self._get("/tasks/", smart=1, due_before=now, status=0)
         return [_to_task(t) for t in data]
 
+    async def get_completed_tasks(self) -> list[Task]:
+        data = await self._get("/tasks/", status=_STATUS_COMPLETED)
+        return [_to_task(t) for t in data]
+
     async def get_task(self, task_id: str, project_id: Optional[str] = None) -> Task:
         return _to_task(await self._get(f"/tasks/{task_id}/"))
 
