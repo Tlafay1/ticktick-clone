@@ -95,3 +95,21 @@ def test_import_dedupe(user, inbox):
     assert stats["imported"] == 0
     assert stats["skipped"] == 1
     assert Task.objects.filter(user=user, title="Lait").count() == 1
+
+
+@pytest.mark.django_db
+def test_import_upsert_by_task_id(user, inbox):
+    """Réimporter le même CSV met à jour les tâches (pas de doublon) grâce au taskId."""
+    row_v1 = _row(lst="Courses", title="Lait", priority="1", task_id="abc123")
+    stats1 = import_ticktick_csv(user, _csv(row_v1))
+    assert stats1["imported"] == 1
+    assert stats1["updated"] == 0
+
+    row_v2 = _row(lst="Courses", title="Lait mis à jour", priority="5", task_id="abc123")
+    stats2 = import_ticktick_csv(user, _csv(row_v2))
+    assert stats2["imported"] == 0
+    assert stats2["updated"] == 1
+    assert Task.objects.filter(user=user).count() == 1
+    task = Task.objects.get(user=user, external_id="abc123")
+    assert task.title == "Lait mis à jour"
+    assert task.priority == 5

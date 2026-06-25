@@ -80,6 +80,7 @@ class Task(models.Model):
     tags = models.ManyToManyField("tags.Tag", blank=True, related_name="tasks")
 
     sort_order = models.BigIntegerField(default=0)
+    external_id = models.CharField(max_length=64, blank=True, db_index=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     trashed_at = models.DateTimeField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
