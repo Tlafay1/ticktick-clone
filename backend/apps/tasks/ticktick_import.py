@@ -68,16 +68,16 @@ def _split_header(content):
 
 
 def import_ticktick_csv(user, content, dedupe=False):
-    """Importe un export TickTick pour `user`. Retourne un récap chiffré."""
+    """Importe (ou met à jour) un export TickTick pour `user`. Retourne un récap chiffré."""
     reader = csv.DictReader(io.StringIO(_split_header(content)))
 
     folders = {}   # nom -> ProjectGroup
     projects = {}  # (nom_liste) -> Project
     sections = {}  # (project_id, nom_colonne) -> Section
     tags_cache = {}  # nom -> Tag
-    id_map = {}    # taskId TickTick -> Task créé
+    id_map = {}    # taskId TickTick -> Task créé/mis à jour
     parent_links = []  # (taskId, parentId)
-    stats = {"imported": 0, "folders_created": 0, "projects_created": 0,
+    stats = {"imported": 0, "updated": 0, "folders_created": 0, "projects_created": 0,
              "tags_created": 0, "skipped": 0}
 
     inbox = Project.objects.filter(user=user, is_inbox=True).first()
@@ -141,10 +141,6 @@ def import_ticktick_csv(user, content, dedupe=False):
             view_mode = Project.ViewMode.LIST
         project = get_project(row.get("List Name"), folder, view_mode)
 
-        if dedupe and Task.objects.filter(user=user, project=project, title=title).exists():
-            stats["skipped"] += 1
-            continue
-
         completed_at = _parse_dt(row.get("Completed Time"))
         raw_status = (row.get("Status") or "").strip()
         if completed_at:
@@ -169,8 +165,10 @@ def import_ticktick_csv(user, content, dedupe=False):
         repeat = (row.get("Repeat") or "").strip()
         rrule = repeat[6:] if repeat.upper().startswith("RRULE:") else repeat
 
-        task = Task.objects.create(
-            user=user,
+        task_id = (row.get("taskId") or "").strip()
+        parent_id = (row.get("parentId") or "").strip()
+
+        task_fields = dict(
             project=project,
             section=get_section(project, row.get("Column Name")),
             title=title,
@@ -184,13 +182,30 @@ def import_ticktick_csv(user, content, dedupe=False):
             timezone_name=(row.get("Timezone") or "").strip(),
             rrule=rrule,
             completed_at=completed_at,
+            parent=None,  # réassigné en 2e passe
         )
+
+        if task_id:
+            # Upsert par identifiant TickTick — idempotent.
+            task, created = Task.objects.update_or_create(
+                user=user, external_id=task_id,
+                defaults=task_fields,
+            )
+        elif dedupe and Task.objects.filter(user=user, project=project, title=title).exists():
+            stats["skipped"] += 1
+            continue
+        else:
+            task = Task.objects.create(user=user, external_id="", **task_fields)
+            created = True
+
+        if not created:
+            # Réinitialiser rappels avant de les ré-importer.
+            task.reminders.all().delete()
 
         tag_names = [t for t in re.split(r",", row.get("Tags") or "") if t.strip()]
         tag_objs = [get_tag(t) for t in tag_names]
         tag_objs = [t for t in tag_objs if t]
-        if tag_objs:
-            task.tags.set(tag_objs)
+        task.tags.set(tag_objs)
 
         # Rappels (max 5) — déclencheurs relatifs déduits du champ Reminder.
         triggers = [t for t in re.split(r",", row.get("Reminder") or "") if "TRIGGER" in t.upper()]
@@ -207,13 +222,11 @@ def import_ticktick_csv(user, content, dedupe=False):
         if created_at:
             Task.objects.filter(pk=task.pk).update(created_at=created_at)
 
-        task_id = (row.get("taskId") or "").strip()
-        parent_id = (row.get("parentId") or "").strip()
         if task_id:
             id_map[task_id] = task
         if task_id and parent_id:
             parent_links.append((task_id, parent_id))
-        stats["imported"] += 1
+        stats["imported" if created else "updated"] += 1
 
     # 2e passe : relier les sous-tâches (respect de la profondeur max).
     for task_id, parent_id in parent_links:
