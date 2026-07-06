@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.tags.models import Tag
+from apps.projects.models import Project
 
 from .models import (
     MAX_SUBTASK_DEPTH, ActivityLog, Attachment, CheckItem, Comment,
@@ -113,6 +114,8 @@ class TaskSerializer(serializers.ModelSerializer):
         many=True, queryset=Tag.objects.all(), required=False
     )
     reminders = NestedReminderSerializer(many=True, required=False)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
+
 
     class Meta:
         model = Task
@@ -196,6 +199,12 @@ class TaskSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         from django.utils import timezone
+
+        if not validated_data.get("project"):
+            validated_data["project"] = Project.objects.get_or_create(
+                user=self.context["request"].user, is_inbox=True,
+                defaults={"name": "Inbox"},
+            )[0]
 
         reminders_data = validated_data.pop("reminders", None)
         if validated_data.get("is_pinned"):
