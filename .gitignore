@@ -45,3 +45,6 @@ desktop/release/
 
 # Electron (electron-builder)
 desktop/dist-electron/
+
+# Logs des runs overnight (scripts/overnight.sh)
+scripts/logs/

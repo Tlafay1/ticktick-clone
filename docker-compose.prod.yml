@@ -48,6 +48,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    healthcheck:
+      # /health/ fait un aller-retour DB ; python est déjà dans l'image.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s  # migrations au démarrage
     restart: unless-stopped
 
   worker:
@@ -71,6 +78,13 @@ services:
     depends_on:
       - postgres
       - redis
+    healthcheck:
+      # Ping du worker Celery local (nodename = celery@<hostname du conteneur>).
+      test: ["CMD-SHELL", "celery -A config inspect ping -d celery@$$HOSTNAME --timeout 5"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   beat:
@@ -89,6 +103,15 @@ services:
     depends_on:
       - postgres
       - redis
+    healthcheck:
+      # Beat n'a pas de commande de statut : on vérifie que PID 1 est bien
+      # toujours le process beat (un crash ferait de toute façon sortir le
+      # conteneur ; ceci rend l'état visible côté Dokploy/compose ps).
+      test: ["CMD-SHELL", "grep -q beat /proc/1/cmdline"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   web:
@@ -97,6 +120,12 @@ services:
       - "${WEB_PORT:-8080}:80"
     depends_on:
       - backend
+    healthcheck:
+      # wget busybox présent dans nginx:alpine.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
 volumes:

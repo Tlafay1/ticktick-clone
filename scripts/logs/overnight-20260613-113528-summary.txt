@@ -1,5 +1,0 @@
-Démarré 2026-06-13 11:35:28
-PASS  TestM02Folders
-PASS  TestM02ListCustomization
-PASS  TestM02CustomSmartListsFilterEngine
-FAIL  TestM03NestedTags  (skip non retiré (pas de vrai travail))

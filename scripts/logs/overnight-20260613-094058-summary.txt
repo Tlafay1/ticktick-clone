@@ -1,9 +1,0 @@
-Démarré 2026-06-13 09:40:58
-PASS  TestM02Folders
-FAIL  TestM02ListCustomization  (skip non retiré (pas de vrai travail))
-FAIL  TestM02CustomSmartListsFilterEngine  (skip non retiré (pas de vrai travail))
-FAIL  TestM03NestedTags  (skip non retiré (pas de vrai travail))
-FAIL  TestM01Recurrence  (skip non retiré (pas de vrai travail))
-FAIL  TestM01RemindersAndM15AnnoyingAlert  (skip non retiré (pas de vrai travail))
-FAIL  TestM25DefaultCreationPresets  (skip non retiré (pas de vrai travail))
-FAIL  TestM23Templates  (skip non retiré (pas de vrai travail))
