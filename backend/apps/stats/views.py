@@ -35,6 +35,11 @@ def heatmap(request):
 @permission_classes([IsAuthenticated])
 def summary(request):
     """Vue d'ensemble : tâches du jour, en retard, par liste, meilleures heures."""
+    # Limite connue : les bornes de « journée » (ici et dans
+    # productivity_score/heatmap) sont en UTC serveur. Il n'existe PAS de
+    # fuseau au niveau utilisateur (UserSettings n'a pas de timezone_name ;
+    # seul Task.timezone_name existe, par tâche). Localiser « aujourd'hui »
+    # exigerait un nouveau réglage utilisateur — hors périmètre du freeze.
     now = timezone.now()
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
