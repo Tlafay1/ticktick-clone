@@ -104,18 +104,24 @@ class Task(models.Model):
 
     @property
     def depth(self):
-        depth, node = 0, self
-        while node.parent_id is not None:
+        # Défense en profondeur : borné par un ensemble de visités pour ne
+        # jamais boucler si un cycle parent existe malgré la validation.
+        depth, node, seen = 0, self, {self.pk}
+        while node.parent_id is not None and node.parent_id not in seen:
+            seen.add(node.parent_id)
             depth += 1
             node = node.parent
         return depth
 
     def descendants(self):
         """Tous les descendants (l'imbrication étant ≤ 5, on itère par niveau)."""
-        result, frontier = [], [self.id]
+        # Même défense : un id déjà visité n'est jamais réexploré (cycle).
+        result, frontier, seen = [], [self.id], {self.id}
         while frontier:
-            level = list(Task.objects.filter(parent_id__in=frontier))
+            level = [t for t in Task.objects.filter(parent_id__in=frontier)
+                     if t.id not in seen]
             result.extend(level)
+            seen.update(t.id for t in level)
             frontier = [t.id for t in level]
         return result
 

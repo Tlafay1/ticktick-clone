@@ -47,6 +47,22 @@ def test_wont_do_and_reopen(api, inbox):
     assert api.get(f"/api/tasks/{task['id']}/").data["status"] == 0
 
 
+def test_depth_and_descendants_tolerate_forced_cycle(api, inbox):
+    """Défense en profondeur : un cycle forcé en base (en contournant la
+    validation API) ne fait plus boucler depth/descendants — et donc
+    complete/trash — à l'infini."""
+    a = make_task(api, inbox, title="A")
+    b = make_task(api, inbox, title="B", parent=a["id"])
+    # Cycle forcé A → B alors que B est déjà enfant de A.
+    Task.objects.filter(pk=a["id"]).update(parent=b["id"])
+
+    ta = Task.objects.get(pk=a["id"])
+    assert ta.depth <= 2  # terminé (borné), pas de boucle infinie
+    assert {t.id for t in ta.descendants()} == {b["id"]}
+    # Le parcours des descendants au complete termine aussi.
+    assert api.post(f"/api/tasks/{a['id']}/complete/").status_code == 200
+
+
 def test_subtask_depth_limit(api, inbox):
     parent = make_task(api, inbox, title="N0")
     for i in range(1, 5):

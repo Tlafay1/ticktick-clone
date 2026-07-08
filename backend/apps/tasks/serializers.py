@@ -157,6 +157,20 @@ class TaskSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"parent": "Une tâche ne peut pas être sa propre parente."}
                 )
+            if self.instance:
+                # Refuse aussi tout descendant : un cycle ferait boucler à
+                # l'infini depth/descendants(). Remontée de la chaîne
+                # d'ancêtres du parent proposé, bornée par un ensemble de
+                # visités (tolérante à un cycle déjà présent en base).
+                node, seen = parent.parent, {parent.pk}
+                while node is not None and node.pk not in seen:
+                    if node.pk == self.instance.pk:
+                        raise serializers.ValidationError(
+                            {"parent": "Une tâche ne peut pas devenir la"
+                             " sous-tâche d'un de ses descendants."}
+                        )
+                    seen.add(node.pk)
+                    node = node.parent
             if parent.depth + 1 >= MAX_SUBTASK_DEPTH:
                 raise serializers.ValidationError(
                     {"parent": f"Imbrication limitée à {MAX_SUBTASK_DEPTH} niveaux."}
