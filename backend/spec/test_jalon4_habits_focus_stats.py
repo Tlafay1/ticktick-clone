@@ -497,13 +497,27 @@ class TestM12Gamification:
         assert "overdue" in data
         assert isinstance(data["score"], int)
 
-    def test_levels_and_badges(self, api, inbox):
+    def test_levels_and_badges(self, api, inbox, user):
         """Niveau calculé selon les complétions cumulées."""
+        from django.utils import timezone
+
+        from apps.tasks.models import Task
+
         resp = api.get("/api/stats/productivity-score/")
         assert resp.status_code == 200
         data = resp.json()
-        assert "level" in data
-        assert data["level"] >= 1
+        # Contrat consommé par le web (StatsView) : label texte, pas un entier.
+        assert data["level"] == "Débutant"
+
+        # 20 complétions cumulées font passer au niveau suivant.
+        now = timezone.now()
+        Task.objects.bulk_create([
+            Task(user=user, project=inbox, title=f"T{i}",
+                 status=Task.Status.COMPLETED, completed_at=now)
+            for i in range(20)
+        ])
+        resp = api.get("/api/stats/productivity-score/")
+        assert resp.json()["level"] == "Régulier"
 
 
 class TestM26DailyReview:

@@ -269,13 +269,19 @@ class TestM19YearViewHeatmap:
 
     def test_year_grid_completion_density(self, api, inbox):
         """Endpoint heatmap renvoie nb tâches terminées par jour pour une année."""
+        from django.utils import timezone
         api.post("/api/tasks/", {"project": inbox.id, "title": "T1"})
         task = api.post("/api/tasks/", {"project": inbox.id, "title": "T2"}).json()
         api.post(f"/api/tasks/{task['id']}/complete/")
-        resp = api.get("/api/stats/heatmap/?year=2026")
+        today = timezone.now().date()
+        resp = api.get(f"/api/stats/heatmap/?year={today.year}")
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, dict)
+        # Contrat consommé par le web (StatsView) : liste [{date, count}].
+        assert isinstance(data, list)
+        entry = next((d for d in data if d["date"] == today.isoformat()), None)
+        assert entry is not None
+        assert entry["count"] == 1  # seule T2 est terminée
 
     def test_click_day_shows_completed_tasks_popover(self, api, inbox):
         """Filtre completed_after/before permet de récupérer les tâches du jour."""
