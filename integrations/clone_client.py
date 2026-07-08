@@ -1,5 +1,11 @@
 """Client de référence pour piloter le clone TickTick depuis un agent IA.
 
+⚠️ DÉPRÉCIÉ — template amont obsolète, conservé pour référence historique.
+La version maintenue et testée de ce client vit dans le repo konofan
+(copie adaptée de ce fichier) : c'est LÀ-BAS que les évolutions se font.
+Ne pas corriger ni faire évoluer cette copie ; le contrat serveur qu'elle
+consomme est verrouillé par backend/spec/test_contract_update_tasks.py.
+
 But : remplacer `TickTickManager.get_client()` dans le repo de l'agent **sans
 toucher aux fichiers d'outils Gemini** (`ticktick_create_task`, etc.). Les méthodes
 exposées ici portent les mêmes noms/signatures que celles attendues par ces outils,
