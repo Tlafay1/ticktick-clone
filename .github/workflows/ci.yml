@@ -1,0 +1,75 @@
+# CI : garde-fou principal du dépôt — backend (pytest + ruff) et web (typecheck + vitest + build).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ticktick
+          POSTGRES_USER: ticktick
+          POSTGRES_PASSWORD: ticktick
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U ticktick"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_USER: ticktick
+      POSTGRES_PASSWORD: ticktick
+      POSTGRES_DB: ticktick
+      REDIS_HOST: localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Installer les dépendances (lockfile gelé)
+        run: uv sync --frozen
+      - name: Lint (ruff)
+        run: uv run ruff check .
+      - name: Tests backend (pytest)
+        run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Installer les dépendances
+        run: npm ci
+      - name: Typecheck (vue-tsc)
+        run: npx vue-tsc -b
+      - name: Tests web (vitest)
+        run: npx vitest run
+      - name: Build (vite)
+        run: npx vite build

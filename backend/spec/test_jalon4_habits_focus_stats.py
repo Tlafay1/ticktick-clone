@@ -232,7 +232,6 @@ class TestM07Focus:
     """Focus : Pomodoro, chrono, tâche associée, sons d'ambiance."""
 
     def _make_task(self, api, inbox):
-        from datetime import timezone as dt_tz
         return api.post("/api/tasks/", {
             "project": inbox.id,
             "title": "Tâche focus",

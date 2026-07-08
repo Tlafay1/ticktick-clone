@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from apps.projects.views import OwnedModelViewSet
-from .models import Habit, HabitCheckIn, HabitReminder, HABIT_PRESETS
+from .models import Habit, HABIT_PRESETS
 from .serializers import HabitSerializer, HabitCheckInSerializer, HabitReminderSerializer
 
 

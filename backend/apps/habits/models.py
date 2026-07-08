@@ -56,7 +56,6 @@ class Habit(models.Model):
         return streak
 
     def max_streak(self):
-        from datetime import timedelta
         dates = sorted(self.checkins.filter(completed=True).values_list("date", flat=True))
         if not dates:
             return 0

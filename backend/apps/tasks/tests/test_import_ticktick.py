@@ -3,7 +3,6 @@
 import pytest
 
 from apps.projects.models import Project, ProjectGroup, Section
-from apps.tags.models import Tag
 from apps.tasks.models import Task
 from apps.tasks.ticktick_import import import_ticktick_csv, looks_like_ticktick_csv
 

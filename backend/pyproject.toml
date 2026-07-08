@@ -26,7 +26,21 @@ dependencies = [
 dev = [
     "pytest>=8.3",
     "pytest-django>=4.9",
+    "ruff>=0.15.20",
 ]
+
+[tool.ruff.lint]
+# Ruleset minimal (garde-fou, pas de réécriture de style) :
+# F = pyflakes, E4/E7/E9 = erreurs pycodestyle (imports/statements/syntaxe), B = bugbear.
+select = ["F", "E4", "E7", "E9", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Baseline (ratchet) : violations préexistantes tolérées telles quelles —
+# on ne réécrit pas du code existant pour le linter. Ne pas en ajouter.
+"apps/accounts/authentication.py" = ["B904"]
+"apps/tasks/tests/test_tasks.py" = ["F841"]
+"spec/test_jalon2_organization.py" = ["F841"]
+"spec/test_jalon3_calendar_boards.py" = ["F841"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"

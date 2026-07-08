@@ -1,7 +1,5 @@
-from django.db.models import Q
-from rest_framework import status, viewsets
+from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
-from rest_framework.response import Response
 
 from .models import Project, ProjectGroup, Section
 from .serializers import ProjectGroupSerializer, ProjectSerializer, SectionSerializer

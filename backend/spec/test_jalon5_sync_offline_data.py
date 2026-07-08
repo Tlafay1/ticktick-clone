@@ -24,10 +24,10 @@ class TestM12RealtimeSync:
 
     def test_monotonic_seq_per_user(self, api, inbox):
         """Chaque mutation modifie modified_at — sert de séquence par utilisateur."""
-        from django.utils import timezone
         t1 = api.post("/api/tasks/", {"project": inbox.id, "title": "T1"}, format="json").json()
         before = t1["modified_at"]
-        import time; time.sleep(0.01)
+        import time
+        time.sleep(0.01)
         t1_updated = api.patch(f"/api/tasks/{t1['id']}/", {"title": "T1b"}, format="json").json()
         assert t1_updated["modified_at"] >= before
 
