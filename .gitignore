@@ -42,3 +42,6 @@ desktop/release/
 .aider.chat.history.md
 .aider.input.history
 .aider.llm.history
+
+# Electron (electron-builder)
+desktop/dist-electron/
