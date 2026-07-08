@@ -7,6 +7,7 @@ import { addDays, startOfDay } from 'date-fns'
 import { wsSend } from '@/composables/useRealtimeSync'
 import { playCompletionSound } from '@/lib/sound'
 import { useUserStore } from '@/stores/user'
+import { useProjectStore } from '@/stores/projects'
 
 export const useTaskStore = defineStore('tasks', () => {
   const tasks = ref<Task[]>([])
@@ -52,7 +53,12 @@ export const useTaskStore = defineStore('tasks', () => {
   async function loadProject(projectId: number) {
     loading.value = true
     try {
-      tasks.value = await tasksApi.list({ project: projectId, status: 0 })
+      // Une smart list custom pilote son statut via ses filter_rules :
+      // ne pas forcer status=0 (sinon une liste « terminées » serait vide).
+      const project = useProjectStore().projects.find((p) => p.id === projectId)
+      tasks.value = project?.is_smart
+        ? await tasksApi.list({ project: projectId })
+        : await tasksApi.list({ project: projectId, status: 0 })
     } finally {
       loading.value = false
     }

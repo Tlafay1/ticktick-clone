@@ -180,6 +180,28 @@ describe('Jalon 2 — organisation', () => {
     expect(Array.isArray(store.groups)).toBe(true)
   })
 
+  it('M2 — smart list custom : loadProject ne force pas status=0 (les règles pilotent le statut)', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', (async (url: RequestInfo | URL) => {
+      urls.push(String(url))
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as typeof fetch)
+    try {
+      const projectStore = useProjectStore()
+      projectStore.projects = [
+        { id: 5, is_smart: true } as Project,
+        { id: 6, is_smart: false } as Project,
+      ]
+      const store = useTaskStore()
+      await store.loadProject(5)
+      await store.loadProject(6)
+      expect(urls[0]).toBe('/api/tasks/?project=5')
+      expect(urls[1]).toBe('/api/tasks/?project=6&status=0')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('M2 — inbox est filtré des projets normaux', () => {
     const store = useProjectStore()
     store.projects = [
