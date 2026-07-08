@@ -60,9 +60,9 @@ export function useReminderNotifications() {
               ? `Rappel ${r.minutes_before > 0 ? r.minutes_before + ' min avant' : 'maintenant'}`
               : 'Rappel',
             tag: `reminder-${r.id}`,
-            requireInteraction: r.is_annoying,
+            requireInteraction: r.annoying,
           })
-          if (r.is_annoying) {
+          if (r.annoying) {
             // Annoying Alert : relance la notification toutes les 30 s jusqu'à interaction
             let count = 0
             const repeat = setInterval(() => {

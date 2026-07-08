@@ -120,7 +120,7 @@ export interface Reminder {
   trigger_type: 'relative' | 'absolute'
   minutes_before: number | null
   trigger_at: string | null
-  is_annoying: boolean
+  annoying: boolean
 }
 
 export interface Comment {

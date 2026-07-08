@@ -165,7 +165,8 @@ export const attachmentsApi = {
 export const versionsApi = {
   list: (taskId: number) => http.get<TaskVersion[]>(`/api/tasks/${taskId}/versions/`),
   restore: (taskId: number, versionId: number) =>
-    http.post<Task>(`/api/tasks/${taskId}/versions/${versionId}/restore/`),
+    // Contrat backend : action « restore-version » avec version_id en body.
+    http.post<Task>(`/api/tasks/${taskId}/restore-version/`, { version_id: versionId }),
 }
 
 export const statsApi = {

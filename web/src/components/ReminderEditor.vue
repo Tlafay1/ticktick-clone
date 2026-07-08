@@ -37,7 +37,7 @@ async function add() {
   const data: Partial<Reminder> = {
     task: props.taskId,
     trigger_type: newType.value,
-    is_annoying: newAnnoying.value,
+    annoying: newAnnoying.value,
     minutes_before: newType.value === 'relative' ? newMinutes.value : null,
     trigger_at: newType.value === 'absolute' ? (newAt.value ? new Date(newAt.value).toISOString() : null) : null,
   }
@@ -69,7 +69,7 @@ function describeReminder(r: Reminder) {
     <!-- Liste des rappels -->
     <div v-if="loading" class="loading-hint">Chargement…</div>
     <div v-for="r in reminders" :key="r.id" class="reminder-row">
-      <span class="reminder-icon">{{ r.is_annoying ? '🔔🔴' : '🔔' }}</span>
+      <span class="reminder-icon">{{ r.annoying ? '🔔🔴' : '🔔' }}</span>
       <span class="reminder-desc">{{ describeReminder(r) }}</span>
       <button class="icon-btn remove-btn" @click="remove(r)">✕</button>
     </div>
