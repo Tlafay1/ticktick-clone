@@ -1,7 +1,7 @@
 from django.conf import settings
-from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve as serve_media
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from .views import health
@@ -25,4 +25,12 @@ urlpatterns = [
         SpectacularSwaggerView.as_view(url_name="schema"),
         name="swagger-ui",
     ),
-] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    # Médias servis par le backend même en production (DEBUG=0) : nginx proxifie
+    # /media/ jusqu'ici. static() ne servait qu'en DEBUG → pièces jointes en 404
+    # en prod. En mono-utilisateur self-hosted, servir via Django est acceptable.
+    re_path(
+        rf"^{settings.MEDIA_URL.lstrip('/')}(?P<path>.*)$",
+        serve_media,
+        {"document_root": settings.MEDIA_ROOT},
+    ),
+]
