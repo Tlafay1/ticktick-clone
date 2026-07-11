@@ -83,6 +83,19 @@ const regularTasks = computed(() =>
 )
 
 async function loadView() {
+  if (route.name === 'task') {
+    // Deep link : charge la tâche dans le contexte de sa liste puis la sélectionne.
+    const tid = Number(route.params.id)
+    const task = await tasksApi.get(tid).catch(() => null)
+    if (task) {
+      await taskStore.loadProject(task.project)
+      if (!taskStore.tasks.some((t: Task) => t.id === tid)) taskStore.tasks.unshift(task)
+      taskStore.select(tid)
+    } else {
+      taskStore.tasks = []
+    }
+    return
+  }
   if (route.name === 'tag') {
     const tagId = Number(route.params.id)
     const tagName = tagStore.byId(tagId)?.name
@@ -267,7 +280,7 @@ watch(() => route.fullPath, loadView)
         </div>
       </div>
 
-      <SearchBar v-if="!isTrash" />
+      <SearchBar v-if="!isTrash" @reset="loadView" />
 
       <div class="task-list-scroll">
         <!-- Corbeille -->

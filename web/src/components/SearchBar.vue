@@ -4,6 +4,7 @@ import { useTaskStore } from '@/stores/tasks'
 import { tasksApi } from '@/api'
 import type { Task } from '@/types'
 
+const emit = defineEmits<{ reset: [] }>()
 const taskStore = useTaskStore()
 const query = ref('')
 const searching = ref(false)
@@ -13,6 +14,8 @@ let timer: ReturnType<typeof setTimeout> | null = null
 watch(query, (q) => {
   if (timer) clearTimeout(timer)
   if (!q.trim()) {
+    // Fin de recherche : recharger la vue courante (sinon résultats périmés).
+    if (searching.value) emit('reset')
     searching.value = false
     return
   }
@@ -24,7 +27,6 @@ watch(query, (q) => {
 
 function clear() {
   query.value = ''
-  searching.value = false
 }
 </script>
 

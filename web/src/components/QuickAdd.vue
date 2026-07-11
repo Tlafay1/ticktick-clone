@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue'
 import { useTaskStore } from '@/stores/tasks'
 import { useProjectStore } from '@/stores/projects'
+import { useTagStore } from '@/stores/tags'
 import { parseQuickAdd } from '@/lib/nlp'
 import { format } from 'date-fns'
 import { templatesApi } from '@/api'
@@ -10,6 +11,29 @@ import type { Template } from '@/types'
 const props = defineProps<{ projectId?: number }>()
 const taskStore = useTaskStore()
 const projectStore = useProjectStore()
+const tagStore = useTagStore()
+
+const projectNames = computed(() => projectStore.projects.map(p => p.name))
+
+/** Résout des noms de tags en ids (crée les manquants). */
+async function resolveTagIds(names: string[]): Promise<number[]> {
+  const ids: number[] = []
+  for (const name of names) {
+    const existing = tagStore.tags.find(t => t.name.toLowerCase() === name.toLowerCase())
+    const tag = existing ?? await tagStore.create(name)
+    ids.push(tag.id)
+  }
+  return ids
+}
+
+/** ^Liste explicite (si reconnue) sinon la liste courante / Inbox. */
+function resolveProjectId(name: string | null): number | null {
+  if (name) {
+    const p = projectStore.projects.find(pr => pr.name.toLowerCase() === name.toLowerCase())
+    if (p) return p.id
+  }
+  return targetProject.value
+}
 
 const text = ref('')
 const open = ref(false)
@@ -27,7 +51,9 @@ function applyTemplate(t: Template) {
   showTemplates.value = false
 }
 
-const parsed = computed(() => (text.value ? parseQuickAdd(text.value) : null))
+const parsed = computed(() =>
+  text.value ? parseQuickAdd(text.value, { projectNames: projectNames.value }) : null,
+)
 
 const targetProject = computed(() => {
   if (props.projectId) return props.projectId
@@ -38,13 +64,14 @@ async function submit() {
   const raw = text.value.trim()
   if (!raw || !targetProject.value) return
   const p = parsed.value
-  const dueDate = p?.due ? p.due.toISOString() : undefined
+  const tags = p?.tagNames.length ? await resolveTagIds(p.tagNames) : []
   await taskStore.create({
-    title: p?.title ?? raw,
-    project: targetProject.value,
-    due_date: dueDate,
+    title: p?.title || raw,
+    project: resolveProjectId(p?.projectName ?? null) ?? targetProject.value,
+    due_date: p?.due ? p.due.toISOString() : undefined,
     is_all_day: !p?.hasTime,
     priority: p?.priority ?? 0,
+    tags,
   })
   text.value = ''
   open.value = false
@@ -57,13 +84,15 @@ async function handlePaste(e: ClipboardEvent) {
   // Multi-line : créer une tâche par ligne
   e.preventDefault()
   for (const line of lines) {
-    const p = parseQuickAdd(line)
+    const p = parseQuickAdd(line, { projectNames: projectNames.value })
+    const tags = p.tagNames.length ? await resolveTagIds(p.tagNames) : []
     await taskStore.create({
       title: p.title || line,
-      project: targetProject.value!,
+      project: resolveProjectId(p.projectName) ?? targetProject.value!,
       due_date: p.due?.toISOString(),
       is_all_day: !p.hasTime,
       priority: p.priority ?? 0,
+      tags,
     })
   }
   text.value = ''
