@@ -143,6 +143,11 @@ class TaskSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"Tag inconnu : {tag.name}.")
         return tags
 
+    def validate_section(self, section):
+        if section is not None and section.project.user != self.context["request"].user:
+            raise serializers.ValidationError("Section inconnue.")
+        return section
+
     def validate_progress(self, value):
         if not 0 <= value <= 100:
             raise serializers.ValidationError("La progression va de 0 à 100.")
@@ -177,6 +182,13 @@ class TaskSerializer(serializers.ModelSerializer):
                 )
             # Une sous-tâche vit dans la liste de son parent.
             data["project"] = parent.project
+        # La section doit appartenir à la liste de la tâche.
+        section = data.get("section", getattr(self.instance, "section", None))
+        project = data.get("project", getattr(self.instance, "project", None))
+        if section is not None and project is not None and section.project_id != project.id:
+            raise serializers.ValidationError(
+                {"section": "La section n'appartient pas à cette liste."}
+            )
         # Le flag épinglé maintient pinned_at pour l'ordre d'épinglage.
         return data
 

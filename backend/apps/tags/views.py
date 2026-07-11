@@ -11,6 +11,7 @@ from .serializers import TagSerializer
 class TagViewSet(OwnedModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
+    filterset_fields = ["parent"]
 
     @action(detail=True, methods=["post"])
     def merge(self, request, pk=None):
