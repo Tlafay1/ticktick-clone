@@ -162,6 +162,13 @@ class TestM21HabitMultiLog:
             api.post(f"/api/habits/{habit['id']}/checkins/", {"date": today, "quantity": 1}, format="json")
         checkins = api.get(f"/api/habits/{habit['id']}/checkins/?date={today}").json()
         assert len(checkins) == 3
+        # Somme 3 < objectif 5 : le jour n'est pas encore atteint.
+        assert all(c["completed"] is False for c in checkins)
+        # Deux logs de plus → somme 5 ≥ objectif : le jour est atteint (agrégation).
+        for _ in range(2):
+            api.post(f"/api/habits/{habit['id']}/checkins/", {"date": today, "quantity": 1}, format="json")
+        checkins = api.get(f"/api/habits/{habit['id']}/checkins/?date={today}").json()
+        assert all(c["completed"] is True for c in checkins)
 
     def test_multiple_time_slot_alarms(self, api):
         """Plusieurs créneaux d'alarme distincts pour la même habitude."""
