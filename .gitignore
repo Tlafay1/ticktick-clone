@@ -18,6 +18,11 @@ dist/
 .vite/
 *.local
 
+# Playwright (E2E)
+web/test-results/
+web/playwright-report/
+web/playwright/.cache/
+
 # Capacitor / Android
 mobile/android/.gradle/
 mobile/android/app/build/

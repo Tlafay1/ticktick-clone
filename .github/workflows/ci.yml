@@ -73,3 +73,68 @@ jobs:
         run: npx vitest run
       - name: Build (vite)
         run: npx vite build
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ticktick
+          POSTGRES_USER: ticktick
+          POSTGRES_PASSWORD: ticktick
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U ticktick"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - "6379:6379"
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_USER: ticktick
+      POSTGRES_PASSWORD: ticktick
+      POSTGRES_DB: ticktick
+      REDIS_HOST: localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Dépendances backend
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Migrer + démarrer le backend sur :8001
+        working-directory: backend
+        run: |
+          uv run python manage.py migrate
+          nohup uv run python manage.py runserver 8001 > /tmp/django.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf http://localhost:8001/health/ && break; sleep 1; done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Dépendances web
+        working-directory: web
+        run: npm ci
+      - name: Navigateurs Playwright
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+      - name: Tests E2E
+        working-directory: web
+        run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7

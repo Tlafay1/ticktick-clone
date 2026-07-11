@@ -15,5 +15,7 @@ export default defineConfig({
   },
   test: {
     setupFiles: ['./src/test-setup.ts'],
+    // Les tests Playwright (e2e/) ont leur propre runner — vitest les ignore.
+    exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
   },
 })
