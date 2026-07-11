@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.focus",
     "apps.countdown",
     "apps.sync",
+    "apps.webhooks",
     "channels",
 ]
 

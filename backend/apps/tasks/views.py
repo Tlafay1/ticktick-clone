@@ -115,12 +115,28 @@ class TaskViewSet(OwnedModelViewSet):
             qs = qs.filter(attachments__isnull=False).distinct()
         return qs
 
+    # ----- Webhooks -----
+
+    def _emit(self, event, task):
+        from apps.webhooks.dispatch import emit
+
+        emit(self.request.user, event, self.get_serializer(task).data)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+        self._emit("task.created", serializer.instance)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        self._emit("task.updated", serializer.instance)
+
     # ----- Transitions -----
 
     @action(detail=True, methods=["post"])
     def complete(self, request, pk=None):
         task = self.get_object()
         task.set_status(Task.Status.COMPLETED)
+        self._emit("task.completed", task)
         return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["post"], url_path="wont-do")
@@ -156,7 +172,11 @@ class TaskViewSet(OwnedModelViewSet):
         if task.trashed_at is None and request.query_params.get("permanent") != "1":
             task.trash()
             return Response(status=status.HTTP_204_NO_CONTENT)
+        task_id = task.id
         task.delete()
+        from apps.webhooks.dispatch import emit
+
+        emit(request.user, "task.deleted", {"id": task_id})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"], url_path="batch")
