@@ -1,8 +1,0 @@
-# Réglages du modèle Ollama pour aider.
-# num_ctx : fenêtre de contexte. Qwen3-Coder 30B (MoE) — architecture MoE donc
-# le KV cache est plus efficace qu'un dense. 32768 nécessaire : les fichiers spec
-# + requirements dépassent 17k tokens d'input, 16384 était trop petit.
-- name: ollama_chat/qwen3-coder:30b
-  extra_params:
-    num_ctx: 32768
-    think: false

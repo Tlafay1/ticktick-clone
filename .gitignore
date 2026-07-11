@@ -36,15 +36,17 @@ desktop/release/
 .vscode/
 *.log
 
-# aider (agent local) — la config (.aider.conf.yml, .aider.model.settings.yml)
-# est versionnée ; seuls les caches/historiques sont ignorés.
-.aider.tags.cache.v*/
-.aider.chat.history.md
-.aider.input.history
-.aider.llm.history
+# Résidus d'agent local (aider) — historiques/caches éventuels
+.aider*
+
+# Outillage Claude Code local (réglages machine)
+.claude/settings.local.json
+
+# Captures d'écran / brouillons de travail à la racine
+/image.png
 
 # Electron (electron-builder)
 desktop/dist-electron/
 
-# Logs des runs overnight (scripts/overnight.sh)
+# Logs de développement
 scripts/logs/
