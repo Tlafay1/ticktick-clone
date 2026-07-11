@@ -5,7 +5,8 @@ import { useProjectStore } from '@/stores/projects'
 import { useRouter } from 'vue-router'
 import { onMounted, ref } from 'vue'
 import { enablePushNotifications } from '@/composables/usePushNotifications'
-import { apiKeysApi, type ApiKeyInfo } from '@/api'
+import { pushToast } from '@/composables/useToast'
+import { apiKeysApi, webhooksApi, type ApiKeyInfo, type Webhook } from '@/api'
 
 const userStore = useUserStore()
 const tagStore = useTagStore()
@@ -118,11 +119,48 @@ async function deleteApiKey(id: number) {
   if (freshKey.value?.id === id) freshKey.value = null
 }
 
+// --- Webhooks ---
+const webhooks = ref<Webhook[]>([])
+const availableEvents = ref<string[]>([])
+const newHookUrl = ref('')
+const newHookEvents = ref<string[]>([])
+
+async function loadWebhooks() {
+  webhooks.value = await webhooksApi.list()
+  availableEvents.value = (await webhooksApi.events()).events
+}
+
+async function createWebhook() {
+  const url = newHookUrl.value.trim()
+  if (!url) return
+  const hook = await webhooksApi.create(url, newHookEvents.value)
+  webhooks.value.unshift(hook)
+  newHookUrl.value = ''
+  newHookEvents.value = []
+}
+
+async function deleteWebhook(id: number) {
+  if (!confirm('Supprimer ce webhook ?')) return
+  await webhooksApi.remove(id)
+  webhooks.value = webhooks.value.filter(h => h.id !== id)
+}
+
+async function toggleWebhook(hook: Webhook) {
+  const updated = await webhooksApi.update(hook.id, { is_active: !hook.is_active })
+  Object.assign(hook, updated)
+}
+
+async function pingWebhook(id: number) {
+  await webhooksApi.ping(id)
+  pushToast('Ping envoyé.', 'success')
+}
+
 onMounted(async () => {
   if (!userStore.user) userStore.load()
   if (!tagStore.tags.length) await tagStore.load()
   if (!projectStore.projects.length) await projectStore.load()
   await loadApiKeys()
+  await loadWebhooks()
 })
 </script>
 
@@ -387,6 +425,40 @@ onMounted(async () => {
         </div>
       </section>
 
+      <!-- Webhooks (n8n / IA / automatisations) -->
+      <section class="settings-section">
+        <h2 class="section-title">Webhooks</h2>
+        <p class="section-hint">Notifie une URL (n8n, script, Home Assistant…) à chaque événement. Corps signé <code>X-Webhook-Signature: sha256=HMAC(secret, body)</code>.</p>
+
+        <div v-for="h in webhooks" :key="h.id" class="setting-row">
+          <div>
+            <div class="setting-label">{{ h.url }}</div>
+            <div class="key-meta">
+              {{ h.events.length ? h.events.join(', ') : 'tous les événements' }}
+              <span v-if="!h.is_active"> · désactivé</span>
+            </div>
+          </div>
+          <div class="webhook-actions">
+            <button class="btn btn-ghost" style="font-size:12px" @click="pingWebhook(h.id)">Ping</button>
+            <button class="btn btn-ghost" style="font-size:12px" @click="toggleWebhook(h)">{{ h.is_active ? 'Désactiver' : 'Activer' }}</button>
+            <button class="btn btn-ghost danger-btn" @click="deleteWebhook(h.id)">Supprimer</button>
+          </div>
+        </div>
+        <div v-if="!webhooks.length" class="empty-hint">Aucun webhook.</div>
+
+        <div class="new-key-form">
+          <input v-model="newHookUrl" class="setting-input" placeholder="https://n8n.exemple/webhook/…" @keydown.enter="createWebhook" />
+          <button class="btn btn-primary" @click="createWebhook">Ajouter</button>
+        </div>
+        <div class="webhook-events">
+          <label v-for="ev in availableEvents" :key="ev" class="webhook-event-chip">
+            <input type="checkbox" :value="ev" v-model="newHookEvents" />
+            {{ ev }}
+          </label>
+          <span class="section-hint" style="margin:0">Aucun coché = tous.</span>
+        </div>
+      </section>
+
       <section class="settings-section">
         <h2 class="section-title">Smart lists visibles</h2>
         <p class="section-hint">Choisissez quelles smart lists apparaissent dans la sidebar.</p>
@@ -561,6 +633,24 @@ onMounted(async () => {
 .tag-action { font-size: 14px; }
 .danger-btn { color: var(--danger, #e03131); }
 .empty-hint { color: var(--text-muted); font-size: 13px; }
+
+/* Webhooks */
+.webhook-actions { display: flex; gap: 4px; align-items: center; }
+.webhook-events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+.webhook-event-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
 
 /* Clés d'API */
 .key-reveal {

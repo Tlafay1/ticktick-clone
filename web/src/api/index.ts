@@ -199,3 +199,24 @@ export const apiKeysApi = {
   create: (label = '') => http.post<ApiKeyInfo>('/api/api-keys/', { label }),
   remove: (id: number) => http.delete(`/api/api-keys/${id}/`),
 }
+
+export interface Webhook {
+  id: number
+  url: string
+  events: string[]
+  secret: string
+  is_active: boolean
+  created_at: string
+  last_triggered_at: string | null
+}
+
+export const webhooksApi = {
+  list: () => http.get<Webhook[]>('/api/webhooks/'),
+  events: () => http.get<{ events: string[] }>('/api/webhooks/events/'),
+  create: (url: string, events: string[]) =>
+    http.post<Webhook>('/api/webhooks/', { url, events }),
+  update: (id: number, data: Partial<Webhook>) =>
+    http.patch<Webhook>(`/api/webhooks/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/webhooks/${id}/`),
+  ping: (id: number) => http.post<{ detail: string }>(`/api/webhooks/${id}/ping/`, {}),
+}
