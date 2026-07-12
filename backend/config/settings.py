@@ -186,6 +186,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.tasks.tasks.purge_expired_trash",
         "schedule": 3600.0,  # toutes les heures
     },
+    "refresh-ics-subscriptions": {
+        "task": "apps.calendars.tasks.refresh_ics_subscriptions",
+        "schedule": 3600.0,  # toutes les heures
+    },
 }
 
 # Web Push (VAPID) — notifications de rappel vers le PWA.
