@@ -587,3 +587,20 @@ class TestM01ActivityLog:
         api.post(f"/api/tasks/{task['id']}/complete/")
         logs = api.get(f"/api/tasks/{task['id']}/activity/").json()
         assert any(entry["action"] == "status_changed" for entry in logs)
+
+    def test_specific_dates_rdate_advances_through_list(self, api, inbox):
+        """« Dates spécifiques » : RDATE:… — compléter avance à la date suivante
+        de la liste, puis la récurrence s'épuise après la dernière."""
+        t = api.post("/api/tasks/", {
+            "project": inbox.id, "title": "T",
+            "rrule": "RDATE:20990801T000000,20990915T000000",
+            "due_date": "2099-08-01T00:00:00Z",
+        }).json()
+        result = api.post(f"/api/tasks/{t['id']}/complete/").json()
+        # Avance au 15/09 (même tâche, rouverte)
+        assert result["id"] == t["id"]
+        assert result["status"] == 0
+        assert result["due_date"].startswith("2099-09-15")
+        # Dernière date de la liste : compléter termine pour de bon.
+        final = api.post(f"/api/tasks/{t['id']}/complete/").json()
+        assert final["status"] == 2

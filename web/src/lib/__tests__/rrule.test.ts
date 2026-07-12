@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildRRule, parseRRule, nextOccurrence, RRULE_PRESETS } from '../rrule'
+import { buildRRule, parseRRule, nextOccurrence, RRULE_PRESETS, buildRDates, parseRDates, isRDates } from '../rrule'
 
 describe('buildRRule', () => {
   it('quotidien simple', () => {
@@ -144,5 +144,34 @@ describe('RRULE_PRESETS', () => {
     expect(rrules).toContain('RRULE:FREQ=WEEKLY')
     expect(rrules).toContain('RRULE:FREQ=MONTHLY')
     expect(rrules).toContain('RRULE:FREQ=YEARLY')
+  })
+})
+
+describe('dates spécifiques (RDATE)', () => {
+  it('build + parse aller-retour (tri, dédup)', () => {
+    const s = buildRDates(['2026-09-15', '2026-08-01', '2026-08-01'])
+    expect(s).toBe('RDATE:20260801T000000,20260915T000000')
+    expect(isRDates(s)).toBe(true)
+    expect(parseRDates(s)).toEqual(['2026-08-01', '2026-09-15'])
+  })
+
+  it('liste vide → chaîne vide', () => {
+    expect(buildRDates([])).toBe('')
+  })
+
+  it('nextOccurrence avance à la prochaine date de la liste', () => {
+    const s = buildRDates(['2026-08-01', '2026-09-15'])
+    const next = nextOccurrence(s, new Date('2026-07-13T10:00:00'))
+    expect(next.getMonth()).toBe(7)  // août
+    expect(next.getDate()).toBe(1)
+    const next2 = nextOccurrence(s, next)
+    expect(next2.getMonth()).toBe(8)  // septembre
+    expect(next2.getDate()).toBe(15)
+  })
+
+  it('plus de dates après from → retourne from (fin de récurrence)', () => {
+    const s = buildRDates(['2026-08-01'])
+    const from = new Date('2026-09-01T00:00:00')
+    expect(nextOccurrence(s, from)).toEqual(from)
   })
 })

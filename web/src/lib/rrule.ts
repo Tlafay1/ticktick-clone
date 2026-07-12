@@ -30,6 +30,33 @@ export function buildRRule(opts: RRuleOptions): string {
   return `RRULE:${parts.join(';')}`
 }
 
+// ── Dates spécifiques (RDATE) ────────────────────────────────────────────────
+// Format stocké : `RDATE:20260801T000000,20260915T000000` (naïf, local).
+// dateutil (backend) sait avancer dans cette liste à la complétion.
+
+export function isRDates(rrule: string): boolean {
+  return rrule.startsWith('RDATE:')
+}
+
+/** RDATE:… → dates ISO `yyyy-MM-dd`, triées. */
+export function parseRDates(rrule: string): string[] {
+  if (!isRDates(rrule)) return []
+  return rrule
+    .slice('RDATE:'.length)
+    .split(',')
+    .map(s => s.trim())
+    .filter(s => /^\d{8}/.test(s))
+    .map(s => `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`)
+    .sort()
+}
+
+/** dates ISO `yyyy-MM-dd` → chaîne RDATE (dédupliquées, triées). */
+export function buildRDates(dates: string[]): string {
+  const uniq = [...new Set(dates)].sort()
+  if (!uniq.length) return ''
+  return `RDATE:${uniq.map(d => `${d.replace(/-/g, '')}T000000`).join(',')}`
+}
+
 export function parseRRule(rrule: string): RRuleOptions | null {
   if (!rrule) return null
   const body = rrule.replace(/^RRULE:/, '')
@@ -60,6 +87,15 @@ const DAY_NUMS: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR
  * COUNT : non géré côté client (la fin par COUNT est gérée par le backend).
  */
 export function nextOccurrence(rrule: string, from: Date): Date {
+  // Dates spécifiques : première date de la liste strictement après `from`.
+  if (isRDates(rrule)) {
+    for (const d of parseRDates(rrule)) {
+      const dt = new Date(`${d}T00:00:00`)
+      if (dt > from) return dt
+    }
+    return from  // plus d'occurrences
+  }
+
   const opts = parseRRule(rrule)
   if (!opts) return from
 
