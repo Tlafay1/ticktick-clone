@@ -182,6 +182,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.tasks.tasks.dispatch_due_reminders",
         "schedule": 60.0,  # toutes les minutes
     },
+    "dispatch-habit-reminders": {
+        "task": "apps.habits.tasks.dispatch_habit_reminders",
+        "schedule": 60.0,  # toutes les minutes
+    },
     "purge-expired-trash": {
         "task": "apps.tasks.tasks.purge_expired_trash",
         "schedule": 3600.0,  # toutes les heures

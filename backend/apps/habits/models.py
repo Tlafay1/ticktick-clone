@@ -72,6 +72,8 @@ class Habit(models.Model):
 class HabitReminder(models.Model):
     habit = models.ForeignKey(Habit, on_delete=models.CASCADE, related_name="reminders")
     time = models.TimeField()
+    # Idempotence du dispatch : un rappel part au plus une fois par jour.
+    last_sent_on = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ["time"]
