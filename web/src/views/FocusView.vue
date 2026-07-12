@@ -28,6 +28,7 @@ const pomodorosBeforeLong = ref(4)
 const pomoCount = ref(0)
 
 const running = ref(false)
+const paused = ref(false)       // en pause : la session courante peut reprendre
 const elapsed = ref(0)          // secondes écoulées
 const sessionStart = ref<Date | null>(null)
 const currentSessionId = ref<number | null>(null)
@@ -81,8 +82,26 @@ onUnmounted(() => {
   document.title = 'TickTick'
 })
 
+function startTicker() {
+  ticker = setInterval(() => {
+    elapsed.value++
+    if (totalSeconds.value !== null && elapsed.value >= totalSeconds.value) {
+      finishTimer()
+    }
+  }, 1000)
+}
+
 async function startTimer() {
+  // Reprise après pause : on continue la MÊME session, sans repartir de zéro.
+  if (paused.value && currentSessionId.value) {
+    paused.value = false
+    running.value = true
+    startTicker()
+    return
+  }
+
   running.value = true
+  paused.value = false
   elapsed.value = 0
   sessionStart.value = new Date()
 
@@ -95,17 +114,13 @@ async function startTimer() {
   })
   currentSessionId.value = session.id
 
-  ticker = setInterval(() => {
-    elapsed.value++
-    if (totalSeconds.value !== null && elapsed.value >= totalSeconds.value) {
-      finishTimer()
-    }
-  }, 1000)
+  startTicker()
 }
 
 async function finishTimer() {
   if (ticker) { clearInterval(ticker); ticker = null }
   running.value = false
+  paused.value = false
 
   if (currentSessionId.value && sessionStart.value) {
     const durationSeconds = elapsed.value
@@ -131,10 +146,13 @@ async function finishTimer() {
 function pauseTimer() {
   if (ticker) { clearInterval(ticker); ticker = null }
   running.value = false
+  paused.value = true
 }
 
 function resetTimer() {
-  pauseTimer()
+  if (ticker) { clearInterval(ticker); ticker = null }
+  running.value = false
+  paused.value = false
   elapsed.value = 0
   pomoCount.value = 0
   sessionType.value = 'work'
@@ -218,8 +236,11 @@ const sessionColor = computed(() => sessionType.value === 'work' ? 'var(--prio-h
 
         <!-- Contrôles -->
         <div class="controls">
-          <button v-if="!running" class="ctrl-btn start" :style="`background: ${sessionColor}`" @click="startTimer">▶ Démarrer</button>
-          <template v-else>
+          <button v-if="!running" class="ctrl-btn start" :style="`background: ${sessionColor}`" @click="startTimer">
+            {{ paused ? '▶ Reprendre' : '▶ Démarrer' }}
+          </button>
+          <button v-if="paused" class="ctrl-btn stop" @click="finishTimer">⏹ Terminer</button>
+          <template v-if="running">
             <button class="ctrl-btn pause" @click="pauseTimer">⏸ Pause</button>
             <button class="ctrl-btn stop" @click="finishTimer">⏹ Terminer</button>
           </template>

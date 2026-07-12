@@ -7,6 +7,7 @@ import { tasksApi } from '@/api'
 import { useTaskStore } from '@/stores/tasks'
 import { useProjectStore } from '@/stores/projects'
 import { useTagStore } from '@/stores/tags'
+import { useUserStore } from '@/stores/user'
 import type { Task } from '@/types'
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -24,20 +25,33 @@ const loading = ref(false)
 const taskStore = useTaskStore()
 const projectStore = useProjectStore()
 const tagStore = useTagStore()
+const userStore = useUserStore()
+
+// Premier jour de semaine des réglages (0=dim, 1=lun, 6=sam) — comme TickTick.
+const weekStartsOn = computed<0 | 1 | 6>(() => {
+  const v = userStore.user?.settings?.week_start ?? 1
+  return (v === 0 || v === 6 ? v : 1)
+})
 
 // ── Chargement ──────────────────────────────────────────────────────────────
 async function loadTasks() {
   loading.value = true
-  const start = viewMode.value === 'week'
-    ? startOfWeek(pivot.value, { weekStartsOn: 1 })
-    : startOfMonth(pivot.value)
-  const end = viewMode.value === 'week'
-    ? endOfWeek(pivot.value, { weekStartsOn: 1 })
-    : endOfMonth(pivot.value)
+  // L'agenda affiche 30 jours glissants depuis aujourd'hui : charger cette
+  // plage (et non le mois du pivot, qui tronquait la fin de mois).
+  const start = viewMode.value === 'agenda'
+    ? startOfDay(new Date())
+    : viewMode.value === 'week'
+      ? startOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
+      : startOfMonth(pivot.value)
+  const end = viewMode.value === 'agenda'
+    ? addDays(startOfDay(new Date()), 30)
+    : viewMode.value === 'week'
+      ? endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
+      : endOfMonth(pivot.value)
 
   allTasks.value = await tasksApi.list({
     due_after: startOfDay(addDays(start, -1)).toISOString(),
-    due_before: endOfWeek(end, { weekStartsOn: 1 }).toISOString(),
+    due_before: endOfWeek(end, { weekStartsOn: weekStartsOn.value }).toISOString(),
     status: 0,
   })
   taskStore.tasks = allTasks.value
@@ -69,8 +83,8 @@ function goToday() { pivot.value = new Date() }
 // ── Vue semaine ──────────────────────────────────────────────────────────────
 const weekDays = computed(() =>
   eachDayOfInterval({
-    start: startOfWeek(pivot.value, { weekStartsOn: 1 }),
-    end: endOfWeek(pivot.value, { weekStartsOn: 1 }),
+    start: startOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value }),
+    end: endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value }),
   })
 )
 
@@ -164,8 +178,8 @@ function multiDayBarStyle(t: Task) {
 
 // ── Vue mois ─────────────────────────────────────────────────────────────────
 const monthGrid = computed(() => {
-  const start = startOfWeek(startOfMonth(pivot.value), { weekStartsOn: 1 })
-  const end = endOfWeek(endOfMonth(pivot.value), { weekStartsOn: 1 })
+  const start = startOfWeek(startOfMonth(pivot.value), { weekStartsOn: weekStartsOn.value })
+  const end = endOfWeek(endOfMonth(pivot.value), { weekStartsOn: weekStartsOn.value })
   return eachDayOfInterval({ start, end })
 })
 

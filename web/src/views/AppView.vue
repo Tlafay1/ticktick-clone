@@ -325,10 +325,10 @@ watch(() => route.fullPath, loadView)
             title="Vue Kanban"
             @click="router.push(`/project/${route.params.id}/kanban`)"
           >⊞ Kanban</button>
-          <button v-if="!isTrash" class="btn btn-ghost" title="Importer" @click="importFile">↑ Importer</button>
           <div v-if="!isTrash" class="header-menu-wrap">
             <button class="icon-btn" title="Plus d'options" @click="toggleHeaderMenu">⋯</button>
             <div v-if="headerMenuOpen" class="header-dropdown" @mouseleave="closeHeaderMenu">
+              <button class="menu-item" @click="importFile(); closeHeaderMenu()">↑ Importer CSV/JSON</button>
               <button class="menu-item" @click="exportCSV(); closeHeaderMenu()">↓ Exporter CSV</button>
               <button class="menu-item" @click="exportJSON(); closeHeaderMenu()">↓ Exporter JSON</button>
               <button class="menu-item" @click="printView(); closeHeaderMenu()">🖨 Imprimer / PDF</button>
