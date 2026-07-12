@@ -135,7 +135,7 @@ export const focusApi = {
   list: () => http.get<FocusSession[]>('/api/focus-sessions/'),
   create: (data: Partial<FocusSession>) => http.post<FocusSession>('/api/focus-sessions/', data),
   update: (id: number, data: Partial<FocusSession>) => http.patch<FocusSession>(`/api/focus-sessions/${id}/`, data),
-  stats: () => http.get<{ total_seconds: number; by_list: unknown[]; by_tag: unknown[] }>('/api/focus-sessions/stats/'),
+  stats: () => http.get<{ total_seconds: number; by_list: Record<string, number>; by_tag: Record<string, number> }>('/api/focus-sessions/stats/'),
 }
 
 export const countdownApi = {
