@@ -86,18 +86,25 @@ const showArchived = ref(false)
 // Compteurs de tâches actives (Aujourd'hui / 7 jours / Inbox), comme TickTick.
 // Rafraîchis à chaque navigation (léger décalage accepté entre deux vues).
 const smartCounts = ref<Record<string, number>>({})
+// Compteurs par liste, dérivés d'UNE seule requête « toutes les actives ».
+const projectCounts = ref<Record<number, number>>({})
 
 async function loadCounts() {
   const { tasksApi } = await import('@/api')
   try {
-    const [today, next7, inbox] = await Promise.all([
+    const [today, next7, all] = await Promise.all([
       tasksApi.list({ ...taskStore.smartParams('today'), smart: 1 }),
       tasksApi.list({ ...taskStore.smartParams('next7'), smart: 1 }),
-      projectStore.inbox
-        ? tasksApi.list({ project: projectStore.inbox.id, status: 0 })
-        : Promise.resolve([]),
+      tasksApi.list({ smart: 1, status: 0 }),
     ])
-    smartCounts.value = { today: today.length, next7: next7.length, inbox: inbox.length }
+    const byProject: Record<number, number> = {}
+    for (const t of all) byProject[t.project] = (byProject[t.project] ?? 0) + 1
+    projectCounts.value = byProject
+    smartCounts.value = {
+      today: today.length,
+      next7: next7.length,
+      inbox: projectStore.inbox ? (byProject[projectStore.inbox.id] ?? 0) : 0,
+    }
   } catch { /* hors-ligne : on garde les derniers compteurs */ }
 }
 watch(() => route.fullPath, loadCounts)
@@ -322,6 +329,7 @@ function cycleTheme() {
             <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
             <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
             <span class="nav-label">{{ p.name }}</span>
+            <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
             <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
           </div>
         </template>
@@ -365,6 +373,7 @@ function cycleTheme() {
         <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
         <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
         <span class="nav-label">{{ p.name }}</span>
+        <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
         <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
       </div>
 
@@ -379,6 +388,7 @@ function cycleTheme() {
           <span class="nav-dot" />
           <span class="nav-icon"><Icon name="inbox" /></span>
           <span class="nav-label">{{ projectStore.inbox.name }}</span>
+          <span v-if="smartCounts.inbox" class="nav-count">{{ smartCounts.inbox }}</span>
         </div>
       </template>
 
