@@ -103,24 +103,25 @@ Infra de test de composants ajoutée (`@vue/test-utils` + happy-dom), `pytest-as
 
 ## 5. Écarts de fidélité restants (priorisés)
 
-### P1 — impact quotidien
-1. **UI des smart lists personnalisées non câblée** : le moteur backend existe, mais `ProjectEditor` ne s'ouvre jamais et le vocabulaire d'opérateurs front (`eq/neq/lt/gt`) diffère du backend. → Câbler l'ouverture + aligner les opérateurs.
-2. **Exposer `planned_date`/`end_date`/`reminders`** dans `types.ts` et le détail de tâche (ajout voulu par l'utilisateur, déjà en base).
-3. **Médias en production** (pièces jointes 404 si `DEBUG=0`).
-4. **Rappels d'habitude non diffusés** (aucune tâche Celery) — la fonctionnalité est inerte.
+### ✅ Traités depuis l'audit (juillet 2026)
+- ~~UI des smart lists personnalisées~~ : entrée « Modifier » du menu contextuel → `ProjectEditor`/`FilterEditor` atteignables (le vocabulaire d'opérateurs était déjà aligné par le moteur fusionné).
+- ~~`planned_date`/`end_date`/`reminders` dans types.ts~~ (le détail de tâche reste à enrichir pour planned/end).
+- ~~Médias en production~~ (route `/media/` servie hors DEBUG).
+- ~~week_start + agenda 30 j~~ ; ~~pause/reprise du focus~~ ; ~~raccourcis clavier~~ (Ctrl+Maj+A, Ctrl+F, Ctrl+Maj+M, Ctrl+Alt+T/N/1/C, ?, Échap) ; ~~listes archivées/désarchivage~~ ; ~~fusion de tags (UI)~~ ; ~~persistance du repli des dossiers~~ ; ~~sous-tâches imbriquées en liste~~ ; ~~refonte du panneau de détail~~ ; ~~N+1 rappels~~.
+- ~~Événements ICS~~ : chaîne complète (parsing icalendar + dépliage RRULE, refresh Celery horaire + action `/refresh/`, endpoint `/api/calendar-events/`, réglages + rendu calendrier).
 
-### P2 — important
-5. **Calendrier** : vue **jour**, respect de `week_start`, rendu des **événements ICS** (implique le parsing/refresh backend + client web).
-6. **Focus** : vraie **pause/reprise** ; brancher les sons d'ambiance ou les retirer ; afficher les **stats de focus**.
-7. **Streak d'habitude conscient de la fréquence** (specific_days/interval/weekly_goal).
-8. **Édition/désarchivage** d'habitude et de countdown (create/pin/delete seulement) ; **vue des listes archivées** (désarchivage aujourd'hui inatteignable).
-9. **Raccourcis clavier** app web (ajout rapide, compléter, dates, priorités, navigation) — cf. table de la recherche.
+### P1 — restant
+1. **Rappels d'habitude non diffusés** (aucune tâche Celery) — la fonctionnalité est inerte.
 
-### P3 — polish
-10. Persistance du repli des dossiers/colonnes (`collapsed` jamais écrit) ; réordonnancement des dossiers.
-11. UI de **merge de tags** (backend prêt, aucun point d'entrée).
-12. Multi-sélection de tâches + actions groupées ; historique de recherche exposé.
-13. Convergence des « dates spécifiques » de récurrence.
+### P2 — restant
+2. **Vue calendrier Jour** (semaine/mois/agenda existent).
+3. **Streak d'habitude conscient de la fréquence** (specific_days/interval/weekly_goal) + fréquences avancées dans le formulaire.
+4. **Édition** d'habitude et de countdown (create/pin/delete seulement) ; **sons d'ambiance** du focus factices ; **stats de focus** jamais affichées.
+5. **Exposer planned_date/end_date** dans le panneau de détail (champs déjà typés).
+
+### P3 — polish restant
+6. Multi-sélection de tâches + actions groupées ; historique de recherche exposé.
+7. Convergence des « dates spécifiques » de récurrence ; réordonnancement des dossiers.
 
 ## 6. API développeur & webhooks (à construire)
 
