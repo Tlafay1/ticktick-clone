@@ -125,14 +125,20 @@ Infra de test de composants ajoutée (`@vue/test-utils` + happy-dom), `pytest-as
   « disparues » après drag calendrier (filtre due_* → scheduled_*) ; colonne
   de détail vide sur sélection périmée.
 
-### P2 — restant
-1. **Sons d'ambiance** du focus factices ; **stats de focus** jamais affichées.
+### ✅ Traités (3e passe, juillet 2026)
+- ~~Sons d'ambiance factices~~ : bruit synthétisé WebAudio (`web/src/lib/ambient.ts`,
+  pluie/forêt/café/vagues, zéro asset) ; ~~stats de focus~~ affichées (total + top listes).
+- ~~Double sidebar TickTick~~ : rail d'icônes vertical (`IconRail.vue`) + mini-calendrier
+  (`MiniCalendar.vue`, deep-link `/calendar?date=`) ; compteurs par liste dans la sidebar.
+- ~~Multi-sélection~~ (Ctrl/Maj+clic) + barre d'actions groupées (dates, priorité,
+  déplacement, terminer, supprimer).
+- ~~Réordonnancement des dossiers~~ (drag d'en-tête sur en-tête, persisté).
+- Bouton de tri (⇅) par vue ; vue Jour du calendrier.
 
 ### P3 — polish restant
-2. Multi-sélection de tâches + actions groupées ; historique de recherche exposé.
-3. Convergence des « dates spécifiques » de récurrence ; réordonnancement des dossiers.
-4. UI : rail d'icônes vertical (double sidebar TickTick), mini-calendrier en bas
-   de sidebar, compteurs par liste.
+1. Historique de recherche exposé ; « dates spécifiques » de récurrence.
+2. Clients natifs réels (Capacitor Android squelette, Electron renderer sans
+   `window.electronAPI`).
 
 ## 6. API développeur & webhooks (à construire)
 
