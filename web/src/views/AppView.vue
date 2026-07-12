@@ -166,15 +166,38 @@ async function loadView() {
       return
     }
     await taskStore.loadProject(pid)
+    await loadDoneSection(pid)
   } else if (route.name === 'smart-list') {
     const sl = route.params.smartList as string
     if (sl === 'inbox' && projectStore.inbox) {
       await taskStore.loadProject(projectStore.inbox.id)
+      await loadDoneSection(projectStore.inbox.id)
     } else {
+      doneTasks.value = []
       await taskStore.loadSmartList(sl)
     }
   }
 }
+
+// ── Section « Terminées & abandonnées » (façon TickTick, vues liste) ────────
+const doneTasks = ref<Task[]>([])
+const doneCollapsed = ref(false)
+const doneShowAll = ref(false)
+
+async function loadDoneSection(projectId: number) {
+  doneShowAll.value = false
+  const [completed, wontdo] = await Promise.all([
+    tasksApi.list({ project: projectId, status: 2 }),
+    tasksApi.list({ project: projectId, status: -1 }),
+  ])
+  doneTasks.value = [...completed, ...wontdo].sort((a, b) =>
+    (b.completed_at ?? '').localeCompare(a.completed_at ?? '')
+  )
+}
+
+const visibleDoneTasks = computed(() =>
+  doneShowAll.value ? doneTasks.value : doneTasks.value.slice(0, 5)
+)
 
 async function restoreTask(id: number) {
   await tasksApi.restore(id)
@@ -394,7 +417,29 @@ watch(() => route.fullPath, loadView)
             />
           </div>
 
-          <div v-if="!taskStore.loading && taskStore.tasks.length === 0" class="empty-state">
+          <!-- Terminées & abandonnées (façon TickTick, en bas de liste) -->
+          <template v-if="doneTasks.length && !isCompleted">
+            <button class="done-section-toggle" @click="doneCollapsed = !doneCollapsed">
+              <span class="done-chevron" :class="{ open: !doneCollapsed }">›</span>
+              Terminées &amp; abandonnées
+              <span class="done-count">{{ doneTasks.length }}</span>
+            </button>
+            <template v-if="!doneCollapsed">
+              <TaskItem
+                v-for="task in visibleDoneTasks"
+                :key="`done-${task.id}`"
+                :task="task"
+                :selected="taskStore.selectedId === task.id"
+              />
+              <button
+                v-if="!doneShowAll && doneTasks.length > 5"
+                class="done-more"
+                @click="doneShowAll = true"
+              >Afficher plus</button>
+            </template>
+          </template>
+
+          <div v-if="!taskStore.loading && taskStore.tasks.length === 0 && doneTasks.length === 0" class="empty-state">
             <div class="empty-icon">{{ isCompleted ? '🏆' : '✨' }}</div>
             <p>{{ isCompleted ? 'Aucune tâche terminée' : 'Aucune tâche' }}</p>
           </div>
@@ -510,6 +555,40 @@ watch(() => route.fullPath, loadView)
   letter-spacing: 0.5px;
   color: var(--text-muted);
 }
+
+/* Section « Terminées & abandonnées » */
+.done-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 14px;
+  padding: 6px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-align: left;
+}
+.done-chevron {
+  display: inline-block;
+  transition: transform 0.15s;
+  color: var(--text-muted);
+}
+.done-chevron.open { transform: rotate(90deg); }
+.done-count { font-size: 11px; color: var(--text-muted); }
+.done-more {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 16px 10px;
+  text-align: left;
+}
+.done-more:hover { color: var(--primary); }
 
 .empty-state {
   display: flex;

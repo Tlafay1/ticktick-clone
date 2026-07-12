@@ -14,6 +14,7 @@ import { useDragSort } from '@/composables/useDragSort'
 import { useUiState } from '@/composables/useUiState'
 import { watch } from 'vue'
 import TagManager from './TagManager.vue'
+import Icon from './Icon.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,15 +28,16 @@ const taskStore = useTaskStore()
 
 onMounted(async () => {
   if (!tagStore.tags.length) await tagStore.load()
+  await loadCounts()
 })
 
 const ALL_SMART_LISTS = [
-  { key: 'today',     label: 'Aujourd\'hui',      icon: '☀️' },
-  { key: 'tomorrow',  label: 'Demain',             icon: '🌤️' },
-  { key: 'next7',     label: '7 prochains jours',  icon: '📅' },
-  { key: 'all',       label: 'Toutes',             icon: '📋' },
-  { key: 'inbox',     label: 'Boîte de réception', icon: '📥' },
-  { key: 'completed', label: 'Terminées',          icon: '✅' },
+  { key: 'today',     label: 'Aujourd\'hui',      icon: 'sun' },
+  { key: 'tomorrow',  label: 'Demain',             icon: 'sunrise' },
+  { key: 'next7',     label: '7 prochains jours',  icon: 'calendar-days' },
+  { key: 'all',       label: 'Toutes',             icon: 'layers' },
+  { key: 'inbox',     label: 'Boîte de réception', icon: 'inbox' },
+  { key: 'completed', label: 'Terminées',          icon: 'check-circle' },
 ]
 
 const smartLists = computed(() => {
@@ -67,7 +69,12 @@ async function addList() {
 }
 
 const userProjects = computed(() =>
-  projectStore.projects.filter((p) => !p.is_inbox && !p.archived)
+  projectStore.projects.filter((p) => !p.is_inbox && !p.archived && !p.is_smart)
+)
+
+// Filtres (smart lists personnalisées) : section dédiée, comme TickTick.
+const smartProjects = computed(() =>
+  projectStore.projects.filter((p) => p.is_smart && !p.archived)
 )
 
 // Listes archivées : section repliée en bas, seul accès au désarchivage.
@@ -75,6 +82,25 @@ const archivedProjects = computed(() =>
   projectStore.projects.filter((p) => !p.is_inbox && p.archived)
 )
 const showArchived = ref(false)
+
+// Compteurs de tâches actives (Aujourd'hui / 7 jours / Inbox), comme TickTick.
+// Rafraîchis à chaque navigation (léger décalage accepté entre deux vues).
+const smartCounts = ref<Record<string, number>>({})
+
+async function loadCounts() {
+  const { tasksApi } = await import('@/api')
+  try {
+    const [today, next7, inbox] = await Promise.all([
+      tasksApi.list({ ...taskStore.smartParams('today'), smart: 1 }),
+      tasksApi.list({ ...taskStore.smartParams('next7'), smart: 1 }),
+      projectStore.inbox
+        ? tasksApi.list({ project: projectStore.inbox.id, status: 0 })
+        : Promise.resolve([]),
+    ])
+    smartCounts.value = { today: today.length, next7: next7.length, inbox: inbox.length }
+  } catch { /* hors-ligne : on garde les derniers compteurs */ }
+}
+watch(() => route.fullPath, loadCounts)
 
 const ungroupedProjects = computed(() =>
   userProjects.value.filter((p) => !p.group)
@@ -191,7 +217,7 @@ async function dropTaskOnTag(e: DragEvent, tagId: number) {
 
 const showTagManager = ref(false)
 
-const themeIcons: Record<string, string> = { auto: '💻', light: '☀️', dark: '🌙' }
+const themeIcons: Record<string, string> = { auto: 'monitor', light: 'sun', dark: 'moon' }
 const themeOrder: Array<'auto' | 'light' | 'dark'> = ['auto', 'light', 'dark']
 
 function cycleTheme() {
@@ -219,8 +245,9 @@ function cycleTheme() {
         class="nav-item"
         :class="{ active: isSmartActive(sl.key) }"
       >
-        <span class="nav-icon">{{ sl.icon }}</span>
+        <span class="nav-icon"><Icon :name="sl.icon" /></span>
         <span class="nav-label">{{ sl.label }}</span>
+        <span v-if="smartCounts[sl.key]" class="nav-count">{{ smartCounts[sl.key] }}</span>
       </RouterLink>
     </nav>
 
@@ -228,20 +255,39 @@ function cycleTheme() {
       <span>Outils</span>
     </div>
     <nav class="nav-section">
-      <RouterLink to="/calendar"   class="nav-item"><span class="nav-icon">📆</span><span class="nav-label">Calendrier</span></RouterLink>
-      <RouterLink to="/timeline"   class="nav-item"><span class="nav-icon">📊</span><span class="nav-label">Timeline</span></RouterLink>
-      <RouterLink to="/eisenhower" class="nav-item"><span class="nav-icon">⊞</span><span class="nav-label">Eisenhower</span></RouterLink>
-      <RouterLink to="/habits"     class="nav-item"><span class="nav-icon">🌱</span><span class="nav-label">Habitudes</span></RouterLink>
-      <RouterLink to="/focus"      class="nav-item"><span class="nav-icon">🍅</span><span class="nav-label">Focus</span></RouterLink>
-      <RouterLink to="/stats"      class="nav-item"><span class="nav-icon">📈</span><span class="nav-label">Statistiques</span></RouterLink>
-      <RouterLink to="/countdown"  class="nav-item"><span class="nav-icon">⏳</span><span class="nav-label">Compte à rebours</span></RouterLink>
+      <RouterLink to="/calendar"   class="nav-item"><span class="nav-icon"><Icon name="calendar" /></span><span class="nav-label">Calendrier</span></RouterLink>
+      <RouterLink to="/timeline"   class="nav-item"><span class="nav-icon"><Icon name="timeline" /></span><span class="nav-label">Timeline</span></RouterLink>
+      <RouterLink to="/eisenhower" class="nav-item"><span class="nav-icon"><Icon name="grid" /></span><span class="nav-label">Eisenhower</span></RouterLink>
+      <RouterLink to="/habits"     class="nav-item"><span class="nav-icon"><Icon name="sprout" /></span><span class="nav-label">Habitudes</span></RouterLink>
+      <RouterLink to="/focus"      class="nav-item"><span class="nav-icon"><Icon name="timer" /></span><span class="nav-label">Focus</span></RouterLink>
+      <RouterLink to="/stats"      class="nav-item"><span class="nav-icon"><Icon name="bar-chart" /></span><span class="nav-label">Statistiques</span></RouterLink>
+      <RouterLink to="/countdown"  class="nav-item"><span class="nav-icon"><Icon name="hourglass" /></span><span class="nav-label">Compte à rebours</span></RouterLink>
     </nav>
+
+    <!-- Filtres = smart lists personnalisées (moteur de règles) -->
+    <template v-if="smartProjects.length">
+      <div class="section-header"><span>Filtres</span></div>
+      <nav class="nav-section">
+        <div
+          v-for="p in smartProjects"
+          :key="p.id"
+          class="nav-item project-item"
+          :class="{ active: isProjectActive(p.id) }"
+          @click="router.push(`/project/${p.id}`)"
+          @contextmenu.prevent="showProjectMenu($event, p)"
+        >
+          <span class="nav-icon"><Icon name="filter" /></span>
+          <span class="nav-label">{{ p.name }}</span>
+          <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" /></button>
+        </div>
+      </nav>
+    </template>
 
     <div class="section-header">
       <span>Mes listes</span>
       <div style="display:flex;gap:2px">
-        <button class="icon-btn" title="Nouveau dossier" @click="showNewGroup = true">📁</button>
-        <button class="icon-btn" title="Nouvelle liste"  @click="showNewList = true">＋</button>
+        <button class="icon-btn" title="Nouveau dossier" @click="showNewGroup = true"><Icon name="folder" :size="14" /></button>
+        <button class="icon-btn" title="Nouvelle liste"  @click="showNewList = true"><Icon name="plus" :size="14" /></button>
       </div>
     </div>
 
@@ -258,7 +304,7 @@ function cycleTheme() {
           @drop.prevent="onGroupDrop(g.id)"
           @dragleave="onGroupDragLeave"
         >
-          <span class="nav-icon">{{ isGroupCollapsed(g.id) ? '▶' : '▼' }}</span>
+          <span class="nav-icon chevron-icon" :class="{ open: !isGroupCollapsed(g.id) }"><Icon name="chevron-right" :size="12" /></span>
           <span class="nav-label">{{ g.name }}</span>
           <span class="group-count">{{ projectsInGroup(g.id).length }}</span>
         </div>
@@ -276,7 +322,7 @@ function cycleTheme() {
             <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
             <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
             <span class="nav-label">{{ p.name }}</span>
-            <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+            <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
           </div>
         </template>
       </template>
@@ -319,7 +365,7 @@ function cycleTheme() {
         <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
         <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
         <span class="nav-label">{{ p.name }}</span>
-        <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+        <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
       </div>
 
       <!-- Inbox (non triable, non déplaçable) -->
@@ -331,7 +377,7 @@ function cycleTheme() {
           @contextmenu.prevent="showProjectMenu($event, projectStore.inbox!)"
         >
           <span class="nav-dot" />
-          <span class="nav-icon project-icon">📥</span>
+          <span class="nav-icon"><Icon name="inbox" /></span>
           <span class="nav-label">{{ projectStore.inbox.name }}</span>
         </div>
       </template>
@@ -362,7 +408,7 @@ function cycleTheme() {
           <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
           <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
           <span class="nav-label">{{ p.name }}</span>
-          <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+          <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
         </div>
       </template>
     </nav>
@@ -370,7 +416,7 @@ function cycleTheme() {
     <!-- Section tags hiérarchiques (toujours visible : point d'accès au gestionnaire) -->
     <div class="section-header">
       <span>Étiquettes</span>
-      <button class="icon-btn" title="Gérer les étiquettes" @click="showTagManager = true">⚙</button>
+      <button class="icon-btn" title="Gérer les étiquettes" @click="showTagManager = true"><Icon name="settings" :size="13" /></button>
     </div>
       <nav class="nav-section">
         <template v-for="tag in tagStore.rootTags" :key="tag.id">
@@ -388,7 +434,7 @@ function cycleTheme() {
               v-if="tagStore.childrenOf(tag.id).length"
               class="tag-chevron"
               @click.stop="toggleTagCollapse(tag.id)"
-            >{{ collapsedTags[tag.id] ? '▶' : '▼' }}</span>
+            ><Icon :name="collapsedTags[tag.id] ? 'chevron-right' : 'chevron-down'" :size="11" /></span>
           </div>
           <template v-if="!collapsedTags[tag.id]">
             <div
@@ -437,16 +483,16 @@ function cycleTheme() {
 
     <div class="sidebar-footer">
       <RouterLink to="/trash" class="nav-item" :class="{ active: isSmartActive('trash') }">
-        <span class="nav-icon">🗑</span>
+        <span class="nav-icon"><Icon name="trash" /></span>
         <span class="nav-label">Corbeille</span>
       </RouterLink>
       <RouterLink to="/settings" class="nav-item">
-        <span class="nav-icon">⚙️</span>
+        <span class="nav-icon"><Icon name="settings" /></span>
         <span class="nav-label">Paramètres</span>
       </RouterLink>
       <div class="sidebar-actions">
         <button class="icon-btn theme-btn" :title="`Thème : ${userStore.theme}`" @click="cycleTheme">
-          {{ themeIcons[userStore.theme] }}
+          <Icon :name="themeIcons[userStore.theme]" :size="14" />
         </button>
         <button class="nav-item logout-btn" @click="logout">
           <span class="nav-icon">⎋</span>
@@ -555,8 +601,26 @@ function cycleTheme() {
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
-.nav-icon { font-size: 15px; width: 20px; text-align: center; }
+.nav-icon {
+  width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.nav-item.active .nav-icon { color: var(--primary); }
 .nav-label { flex: 1; }
+
+/* Compteur de tâches à droite (façon TickTick) */
+.nav-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 6px;
+}
+
+/* Chevron rotatif des dossiers */
+.chevron-icon { transition: transform 0.15s; color: var(--text-muted); }
+.chevron-icon.open { transform: rotate(90deg); }
 
 .nav-dot {
   width: 10px; height: 10px; border-radius: 50%;

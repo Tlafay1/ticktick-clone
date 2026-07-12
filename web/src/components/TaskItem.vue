@@ -92,7 +92,7 @@ function openContext(e: MouseEvent) {
 
     <div class="task-body">
       <span class="task-title">{{ task.title }}</span>
-      <div v-if="task.progress > 0" class="task-progress-bar">
+      <div v-if="task.progress > 0 && !isCompleted && !isWontDo" class="task-progress-bar">
         <div class="task-progress-fill" :style="`width:${task.progress}%`" />
       </div>
       <div v-if="dueLabel_ || childCounts.total || task.check_items?.length" class="task-meta">

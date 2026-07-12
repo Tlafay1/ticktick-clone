@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useTaskStore } from '@/stores/tasks'
 import { useTagStore } from '@/stores/tags'
+import { useProjectStore } from '@/stores/projects'
+import Icon from './Icon.vue'
 import { checkItemsApi, commentsApi, tasksApi } from '@/api'
 import type { CheckItem, Comment, ActivityEntry, Task } from '@/types'
 import { renderMarkdown, toggleMarkdownCheckbox } from '@/lib/markdown'
@@ -35,13 +37,25 @@ const showReminders = ref(false)
 const showActivity = ref(false)
 const activity = ref<ActivityEntry[]>([])
 
-// Barre d'outils inférieure façon TickTick : un seul popover ouvert à la fois.
-const popover = ref<'date' | 'priority' | 'tags' | null>(null)
+// Popovers façon TickTick : date/priorité en haut, tags/liste en bas.
+type PopoverKind = 'date' | 'priority' | 'tags' | 'move'
+const popover = ref<PopoverKind | null>(null)
 const showMore = ref(false)
-function togglePopover(p: 'date' | 'priority' | 'tags') {
+function togglePopover(p: PopoverKind) {
   popover.value = popover.value === p ? null : p
 }
 watch(task, () => { popover.value = null; showMore.value = false })
+
+const projectStore = useProjectStore()
+const currentProjectName = computed(() =>
+  projectStore.projects.find((p) => p.id === task.value?.project)?.name ?? 'Liste'
+)
+
+async function moveToProject(projectId: number) {
+  if (!task.value) return
+  await taskStore.moveTo(task.value.id, projectId)
+  popover.value = null
+}
 
 watch(task, async (t) => {
   if (t) {
@@ -175,9 +189,14 @@ async function createAndAddTag() {
   newTagName.value = ''
 }
 
+const subtaskInput = ref<HTMLInputElement>()
+function focusSubtaskInput() { subtaskInput.value?.focus() }
+
 onMounted(async () => {
+  window.addEventListener('tt:focus-subtask', focusSubtaskInput)
   if (!tagStore.tags.length) await tagStore.load()
 })
+onUnmounted(() => window.removeEventListener('tt:focus-subtask', focusSubtaskInput))
 
 async function postComment() {
   if (!task.value || !newComment.value.trim()) return
@@ -242,7 +261,7 @@ function formatCommentDate(iso: string) {
 
 <template>
   <aside v-if="task" class="detail-panel">
-    <!-- Barre supérieure : complétion + épingle + fermer -->
+    <!-- Barre supérieure : complétion + date + drapeau + épingle + fermer -->
     <div class="dp-top">
       <button
         class="task-checkbox dp-check"
@@ -252,10 +271,33 @@ function formatCommentDate(iso: string) {
       >
         <svg v-if="task.status !== 0" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L3.8 7.5L8.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
-      <span class="dp-status">{{ task.status === 2 ? 'Terminée' : task.status === -1 ? 'Abandonnée' : 'À faire' }}</span>
+      <span class="dp-top-sep" />
+      <button class="dp-tool" :class="{ active: popover === 'date', set: !!task.due_date }" @click="togglePopover('date')">
+        <Icon name="calendar" :size="14" /><span class="dp-tool-lbl">{{ dueSummary }}</span>
+      </button>
       <div class="dp-top-actions">
-        <button class="icon-btn" :class="{ active: task.is_pinned }" :title="task.is_pinned ? 'Désépingler' : 'Épingler'" @click="togglePin">📌</button>
-        <button class="icon-btn" title="Fermer" @click="taskStore.select(null)">✕</button>
+        <button class="dp-tool" :class="{ active: popover === 'priority' }" title="Priorité" @click="togglePopover('priority')">
+          <span :style="`color:${priorityColor(task.priority)}`"><Icon name="flag" :size="15" /></span>
+        </button>
+        <button class="icon-btn" :class="{ active: task.is_pinned }" :title="task.is_pinned ? 'Désépingler' : 'Épingler'" @click="togglePin"><Icon name="pin" :size="15" /></button>
+        <button class="icon-btn" title="Fermer" @click="taskStore.select(null)"><Icon name="x" :size="14" /></button>
+      </div>
+
+      <!-- Popover Date + récurrence + rappels (ancré sous la barre haute) -->
+      <div v-if="popover === 'date'" class="dp-popover anchored-top">
+        <div class="date-row"><label class="field-label-sm">Début</label><input type="datetime-local" class="field-input" :value="toLocalInput(task.start_date)" @change="setDateField('start_date', $event)" /></div>
+        <div class="date-row"><label class="field-label-sm">Échéance</label><input type="datetime-local" class="field-input" :value="toLocalInput(task.due_date)" @change="setDateField('due_date', $event)" /></div>
+        <button class="collapsible-label" @click="showRecurrence = !showRecurrence"><span class="field-label">Récurrence</span><span v-if="task.rrule" class="rrule-badge">{{ task.rrule.replace('RRULE:', '').split(';')[0] }}</span><span class="chevron">{{ showRecurrence ? '▲' : '▼' }}</span></button>
+        <RecurrenceEditor v-if="showRecurrence" :model-value="task.rrule" :repeat-from="task.repeat_from" @update:model-value="taskStore.update(task.id, { rrule: $event })" @update:repeat-from="taskStore.update(task.id, { repeat_from: $event })" />
+        <button class="collapsible-label" @click="showReminders = !showReminders"><span class="field-label">Rappels</span><span class="chevron">{{ showReminders ? '▲' : '▼' }}</span></button>
+        <ReminderEditor v-if="showReminders" :task-id="task.id" />
+      </div>
+
+      <!-- Popover Priorité -->
+      <div v-if="popover === 'priority'" class="dp-popover anchored-top prio-pop">
+        <button v-for="opt in priorityOptions" :key="opt.value" class="prio-row" :class="{ active: task.priority === opt.value }" @click="setPriority(opt.value); popover = null">
+          <span :style="`color:${opt.color}`"><Icon name="flag" :size="14" /></span> {{ priorityLabel(opt.value) }}
+        </button>
       </div>
     </div>
 
@@ -290,7 +332,7 @@ function formatCommentDate(iso: string) {
             <button class="remove-item icon-btn" @click="removeSubtask(child)">✕</button>
           </div>
           <div class="check-item new-item">
-            <input v-model="newSubtaskTitle" placeholder="Ajouter une sous-tâche" @keydown.enter="addSubtask" />
+            <input ref="subtaskInput" v-model="newSubtaskTitle" placeholder="Ajouter une sous-tâche" @keydown.enter="addSubtask" />
           </div>
         </div>
       </div>
@@ -356,34 +398,27 @@ function formatCommentDate(iso: string) {
       </div>
     </div>
 
-    <!-- Barre d'outils inférieure (façon TickTick) -->
+    <!-- Barre inférieure : liste à gauche, tags + suppression à droite -->
     <div class="dp-toolbar">
-      <button class="dp-tool" :class="{ active: popover === 'date', set: !!task.due_date }" @click="togglePopover('date')">
-        <span class="dp-tool-ico">📅</span><span class="dp-tool-lbl">{{ dueSummary }}</span>
-      </button>
-      <button class="dp-tool" :class="{ active: popover === 'priority', set: task.priority > 0 }" title="Priorité" @click="togglePopover('priority')">
-        <span class="dp-tool-ico" :style="`color:${priorityColor(task.priority)}`">⚑</span>
-      </button>
-      <button class="dp-tool" :class="{ active: popover === 'tags', set: !!task.tags?.length }" title="Tags" @click="togglePopover('tags')">
-        <span class="dp-tool-ico">🏷</span><span v-if="task.tags?.length" class="dp-tool-lbl">{{ task.tags.length }}</span>
+      <button class="dp-tool" :class="{ active: popover === 'move' }" title="Déplacer vers une liste" @click="togglePopover('move')">
+        <Icon name="inbox" :size="14" /><span class="dp-tool-lbl">{{ currentProjectName }}</span>
       </button>
       <div class="dp-tool-spacer" />
-      <button class="dp-tool danger" title="Supprimer" @click="trashTask">🗑</button>
+      <button class="dp-tool" :class="{ active: popover === 'tags', set: !!task.tags?.length }" title="Tags" @click="togglePopover('tags')">
+        <Icon name="tag" :size="14" /><span v-if="task.tags?.length" class="dp-tool-lbl">{{ task.tags.length }}</span>
+      </button>
+      <button class="dp-tool danger" title="Supprimer" @click="trashTask"><Icon name="trash" :size="14" /></button>
 
-      <!-- Popover Date + récurrence + rappels -->
-      <div v-if="popover === 'date'" class="dp-popover">
-        <div class="date-row"><label class="field-label-sm">Début</label><input type="datetime-local" class="field-input" :value="toLocalInput(task.start_date)" @change="setDateField('start_date', $event)" /></div>
-        <div class="date-row"><label class="field-label-sm">Échéance</label><input type="datetime-local" class="field-input" :value="toLocalInput(task.due_date)" @change="setDateField('due_date', $event)" /></div>
-        <button class="collapsible-label" @click="showRecurrence = !showRecurrence"><span class="field-label">🔄 Récurrence</span><span v-if="task.rrule" class="rrule-badge">{{ task.rrule.replace('RRULE:', '').split(';')[0] }}</span><span class="chevron">{{ showRecurrence ? '▲' : '▼' }}</span></button>
-        <RecurrenceEditor v-if="showRecurrence" :model-value="task.rrule" :repeat-from="task.repeat_from" @update:model-value="taskStore.update(task.id, { rrule: $event })" @update:repeat-from="taskStore.update(task.id, { repeat_from: $event })" />
-        <button class="collapsible-label" @click="showReminders = !showReminders"><span class="field-label">🔔 Rappels</span><span class="chevron">{{ showReminders ? '▲' : '▼' }}</span></button>
-        <ReminderEditor v-if="showReminders" :task-id="task.id" />
-      </div>
-
-      <!-- Popover Priorité -->
-      <div v-if="popover === 'priority'" class="dp-popover prio-pop">
-        <button v-for="opt in priorityOptions" :key="opt.value" class="prio-row" :class="{ active: task.priority === opt.value }" @click="setPriority(opt.value); popover = null">
-          <span :style="`color:${opt.color}`">⚑</span> {{ priorityLabel(opt.value) }}
+      <!-- Popover Déplacer vers -->
+      <div v-if="popover === 'move'" class="dp-popover move-pop">
+        <button
+          v-for="p in projectStore.projects.filter(p => !p.is_smart && !p.archived)"
+          :key="p.id"
+          class="prio-row"
+          :class="{ active: task.project === p.id }"
+          @click="moveToProject(p.id)"
+        >
+          <Icon :name="p.is_inbox ? 'inbox' : 'layers'" :size="14" /> {{ p.name }}
         </button>
       </div>
 
@@ -426,16 +461,24 @@ function formatCommentDate(iso: string) {
 
 /* Détail façon TickTick : haut fixe, corps défilant, barre d'outils en bas. */
 .dp-top {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--border);
 }
-.dp-check { width: 18px; height: 18px; cursor: pointer; }
-.dp-status { font-size: 12px; color: var(--text-muted); }
-.dp-top-actions { margin-left: auto; display: flex; gap: 2px; }
+.dp-check { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+.dp-top-sep { width: 1px; height: 16px; background: var(--border); }
+.dp-top-actions { margin-left: auto; display: flex; gap: 2px; align-items: center; }
 .dp-top-actions .icon-btn.active { color: var(--primary); }
+
+/* Popovers ancrés SOUS la barre haute (date, priorité) */
+.dp-popover.anchored-top {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+.move-pop { left: 12px; right: auto; width: 240px; }
 
 .dp-body { flex: 1; overflow-y: auto; padding: 16px; }
 

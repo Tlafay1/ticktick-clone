@@ -5,7 +5,8 @@ import type { Task } from '@/types'
 import { useTaskStore } from '@/stores/tasks'
 import { useProjectStore } from '@/stores/projects'
 import { useTagStore } from '@/stores/tags'
-import { addDays, startOfDay, addWeeks, nextMonday } from 'date-fns'
+import { addDays, startOfDay, nextMonday, nextSaturday } from 'date-fns'
+import Icon from './Icon.vue'
 
 const props = defineProps<{ task: Task; x: number; y: number }>()
 const emit = defineEmits<{ close: [] }>()
@@ -15,29 +16,27 @@ const projectStore = useProjectStore()
 const tagStore = useTagStore()
 const router = useRouter()
 
-const SNOOZE_OPTIONS = [
-  { label: 'Demain',           icon: '🌤️', fn: () => addDays(startOfDay(new Date()), 1) },
-  { label: 'Après-demain',     icon: '📅', fn: () => addDays(startOfDay(new Date()), 2) },
-  { label: 'Semaine prochaine',icon: '📆', fn: () => nextMonday(startOfDay(new Date())) },
-  { label: '+3 jours',         icon: '⏩', fn: () => addDays(startOfDay(new Date()), 3) },
-  { label: '+1 semaine',       icon: '⏭️', fn: () => addWeeks(startOfDay(new Date()), 1) },
+// Rangée Date (façon TickTick) : icônes d'accès rapide.
+const DATE_OPTIONS = [
+  { label: "Aujourd'hui",       icon: 'sun',           fn: () => startOfDay(new Date()) },
+  { label: 'Demain',            icon: 'sunrise',       fn: () => addDays(startOfDay(new Date()), 1) },
+  { label: 'Week-end prochain', icon: 'calendar',      fn: () => nextSaturday(startOfDay(new Date())) },
+  { label: 'Semaine prochaine', icon: 'calendar-days', fn: () => nextMonday(startOfDay(new Date())) },
 ]
 
+// Rangée Priorité : 4 drapeaux (haute, moyenne, basse, aucune).
 const PRIORITIES = [
-  { label: 'Haute',   value: 5, color: '#f55' },
-  { label: 'Moyenne', value: 3, color: '#fa0' },
-  { label: 'Basse',   value: 1, color: '#4af' },
-  { label: 'Aucune',  value: 0, color: '#aaa' },
+  { label: 'Haute',   value: 5, color: 'var(--prio-high)' },
+  { label: 'Moyenne', value: 3, color: 'var(--prio-medium)' },
+  { label: 'Basse',   value: 1, color: 'var(--prio-low)' },
+  { label: 'Aucune',  value: 0, color: 'var(--prio-none)' },
 ]
 
-const menuRef   = ref<HTMLDivElement>()
-const showSnooze  = ref(false)
-const showMove    = ref(false)
-const showTags    = ref(false)
-const showPriority = ref(false)
+const menuRef  = ref<HTMLDivElement>()
+const showMove = ref(false)
+const showTags = ref(false)
 
 function close() { emit('close') }
-
 function handle(fn: () => void) { fn(); close() }
 
 async function wontDo()    { handle(() => taskStore.wontDo(props.task.id)) }
@@ -45,7 +44,7 @@ async function duplicate() { handle(() => taskStore.duplicate(props.task.id)) }
 async function trash()     { handle(() => taskStore.remove(props.task.id)) }
 async function pin()       { handle(() => taskStore.pin(props.task.id)) }
 
-async function snooze(date: Date) {
+async function setDate(date: Date) {
   handle(() => taskStore.update(props.task.id, { due_date: date.toISOString(), is_all_day: true }))
 }
 
@@ -62,6 +61,13 @@ async function toggleTag(tagId: number) {
     ? props.task.tags.filter((t) => t !== tagId)
     : [...props.task.tags, tagId]
   await taskStore.update(props.task.id, { tags })
+}
+
+function addSubtask() {
+  // Ouvre le détail sur la tâche et place le focus sur l'ajout de sous-tâche.
+  taskStore.select(props.task.id)
+  setTimeout(() => window.dispatchEvent(new CustomEvent('tt:focus-subtask')), 80)
+  close()
 }
 
 async function startFocus() {
@@ -91,68 +97,54 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
     :style="`left: ${x}px; top: ${y}px`"
     @contextmenu.prevent
   >
-    <!-- Compléter / Won't Do -->
-    <button class="menu-item" @click="taskStore.complete(task.id); close()">
-      <span class="mi-icon">✓</span> Terminer
+    <!-- Date : rangée d'icônes -->
+    <div class="menu-label">Date</div>
+    <div class="quick-row">
+      <button
+        v-for="opt in DATE_OPTIONS" :key="opt.label"
+        class="quick-btn" :title="opt.label"
+        @click="setDate(opt.fn())"
+      ><Icon :name="opt.icon" :size="16" /></button>
+    </div>
+
+    <!-- Priorité : rangée de drapeaux -->
+    <div class="menu-label">Priorité</div>
+    <div class="quick-row">
+      <button
+        v-for="p in PRIORITIES" :key="p.value"
+        class="quick-btn flag-btn"
+        :class="{ active: task.priority === p.value }"
+        :style="`color:${p.color}`"
+        :title="p.label"
+        @click="setPriority(p.value)"
+      ><Icon name="flag" :size="16" /></button>
+    </div>
+
+    <div class="menu-sep" />
+
+    <button class="menu-item" @click="addSubtask">
+      <span class="mi-icon"><Icon name="subtask" :size="15" /></span> Ajouter une sous-tâche
+    </button>
+    <button class="menu-item" @click="pin">
+      <span class="mi-icon"><Icon name="pin" :size="15" /></span> {{ task.is_pinned ? 'Désépingler' : 'Épingler' }}
     </button>
     <button class="menu-item" @click="wontDo">
-      <span class="mi-icon">✗</span> Ne fera pas (Won't Do)
+      <span class="mi-icon"><Icon name="x-circle" :size="15" /></span> Ne fera pas (Won't Do)
     </button>
-
-    <div class="menu-sep" />
-
-    <!-- Priorité -->
-    <div class="menu-item submenu-trigger"
-         @mouseenter="showPriority = true" @mouseleave="showPriority = false">
-      <span class="mi-icon">🚩</span> Priorité
-      <span class="submenu-arrow">▶</span>
-      <div v-if="showPriority" class="menu submenu">
-        <button
-          v-for="p in PRIORITIES" :key="p.value"
-          class="menu-item"
-          :class="{ active: task.priority === p.value }"
-          @click="setPriority(p.value)"
-        >
-          <span class="priority-dot" :style="`background:${p.color}`" /> {{ p.label }}
-          <span v-if="task.priority === p.value" class="mi-check">✓</span>
-        </button>
-      </div>
-    </div>
-
-    <!-- Épingler -->
-    <button class="menu-item" @click="pin">
-      <span class="mi-icon">📌</span> {{ task.is_pinned ? 'Désépingler' : 'Épingler' }}
-    </button>
-
-    <div class="menu-sep" />
-
-    <!-- Reporter -->
-    <div class="menu-item submenu-trigger"
-         @mouseenter="showSnooze = true" @mouseleave="showSnooze = false">
-      <span class="mi-icon">⏰</span> Reporter
-      <span class="submenu-arrow">▶</span>
-      <div v-if="showSnooze" class="menu submenu">
-        <button
-          v-for="opt in SNOOZE_OPTIONS" :key="opt.label"
-          class="menu-item"
-          @click="snooze(opt.fn())"
-        ><span>{{ opt.icon }}</span> {{ opt.label }}</button>
-      </div>
-    </div>
 
     <!-- Déplacer vers -->
     <div class="menu-item submenu-trigger"
          @mouseenter="showMove = true" @mouseleave="showMove = false">
-      <span class="mi-icon">→</span> Déplacer vers
-      <span class="submenu-arrow">▶</span>
+      <span class="mi-icon"><Icon name="arrow-right" :size="15" /></span> Déplacer vers
+      <span class="submenu-arrow"><Icon name="chevron-right" :size="11" /></span>
       <div v-if="showMove" class="menu submenu submenu-scroll">
         <button
-          v-for="p in projectStore.projects" :key="p.id"
+          v-for="p in projectStore.projects.filter(p => !p.is_smart)" :key="p.id"
           class="menu-item"
           :class="{ active: task.project === p.id }"
           @click="moveTo(p.id)"
         >
-          <span class="mi-icon">{{ p.is_inbox ? '📥' : '📋' }}</span>
+          <span class="mi-icon"><Icon :name="p.is_inbox ? 'inbox' : 'layers'" :size="14" /></span>
           {{ p.name }}
           <span v-if="task.project === p.id" class="mi-check">✓</span>
         </button>
@@ -162,8 +154,8 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
     <!-- Étiquettes -->
     <div class="menu-item submenu-trigger"
          @mouseenter="showTags = true" @mouseleave="showTags = false">
-      <span class="mi-icon">#</span> Étiquettes
-      <span class="submenu-arrow">▶</span>
+      <span class="mi-icon"><Icon name="tag" :size="15" /></span> Étiquettes
+      <span class="submenu-arrow"><Icon name="chevron-right" :size="11" /></span>
       <div v-if="showTags" class="menu submenu submenu-scroll">
         <div v-if="!tagStore.tags.length" class="menu-item disabled">Aucun tag</div>
         <button
@@ -179,28 +171,23 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
       </div>
     </div>
 
-    <div class="menu-sep" />
-
-    <!-- Focus -->
     <button class="menu-item" @click="startFocus">
-      <span class="mi-icon">🍅</span> Lancer le focus
-    </button>
-
-    <!-- Dupliquer -->
-    <button class="menu-item" @click="duplicate">
-      <span class="mi-icon">⧉</span> Dupliquer
-    </button>
-
-    <!-- Copier lien -->
-    <button class="menu-item" @click="copyLink">
-      <span class="mi-icon">🔗</span> Copier le lien
+      <span class="mi-icon"><Icon name="play" :size="15" /></span> Lancer le focus
     </button>
 
     <div class="menu-sep" />
 
-    <!-- Corbeille -->
+    <button class="menu-item" @click="duplicate">
+      <span class="mi-icon"><Icon name="copy" :size="15" /></span> Dupliquer
+    </button>
+    <button class="menu-item" @click="copyLink">
+      <span class="mi-icon"><Icon name="link" :size="15" /></span> Copier le lien
+    </button>
+
+    <div class="menu-sep" />
+
     <button class="menu-item danger" @click="trash">
-      <span class="mi-icon">🗑</span> Mettre à la corbeille
+      <span class="mi-icon"><Icon name="trash" :size="15" /></span> Supprimer
     </button>
   </div>
 </template>
@@ -209,8 +196,35 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
 .task-context-menu {
   position: fixed;
   z-index: 2000;
-  min-width: 200px;
+  min-width: 210px;
 }
+
+.menu-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 10px 2px;
+}
+
+.quick-row {
+  display: flex;
+  gap: 4px;
+  padding: 2px 8px 6px;
+}
+.quick-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.quick-btn:hover { background: var(--bg-hover); color: var(--text); }
+.flag-btn.active { background: var(--bg-hover); }
+.flag-btn.active svg { fill: currentColor; }
 
 .submenu-trigger {
   position: relative;
@@ -228,7 +242,7 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   font-size: 13px;
 }
 .submenu-trigger:hover { background: var(--bg-hover); }
-.submenu-arrow { margin-left: auto; font-size: 10px; color: var(--text-muted); }
+.submenu-arrow { margin-left: auto; color: var(--text-muted); display: inline-flex; }
 
 .submenu {
   position: absolute;
@@ -242,10 +256,17 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
   overflow-y: auto;
 }
 
-.mi-icon { width: 18px; text-align: center; flex-shrink: 0; font-size: 13px; }
-.mi-check { margin-left: auto; color: var(--accent); font-size: 12px; }
+.mi-icon {
+  width: 18px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.mi-check { margin-left: auto; color: var(--primary); font-size: 12px; }
 
-.priority-dot, .tag-dot {
+.tag-dot {
   display: inline-block;
   width: 10px; height: 10px;
   border-radius: 50%;

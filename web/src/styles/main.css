@@ -34,22 +34,23 @@
 [data-accent='pink']   { --primary: #d6336c; --primary-hover: #c2255c; --primary-soft: #fff0f6; }
 [data-accent='teal']   { --primary: #0c8599; --primary-hover: #0b7285; --primary-soft: #e3fafc; }
 
+/* Sombre façon TickTick : fonds quasi noirs et plats, séparations discrètes. */
 [data-theme='dark'] {
   --primary: #5b87ff;
   --primary-hover: #4772fa;
-  --primary-soft: #1e2a4a;
+  --primary-soft: #20293f;
   --prio-high: #f05454;
   --prio-medium: #fcc419;
   --prio-low: #5b87ff;
-  --prio-none: #6b6f76;
-  --bg: #18191d;
-  --bg-sidebar: #111215;
-  --bg-hover: #22252c;
-  --bg-active: #1e2a4a;
-  --border: #252830;
-  --text: #e4e6ea;
-  --text-secondary: #9aa0ab;
-  --text-muted: #5c6370;
+  --prio-none: #62666e;
+  --bg: #191919;
+  --bg-sidebar: #141414;
+  --bg-hover: #232323;
+  --bg-active: #20293f;
+  --border: #2a2a2a;
+  --text: #d6d6d6;
+  --text-secondary: #9a9a9a;
+  --text-muted: #5f5f5f;
   --danger: #f05454;
 }
 

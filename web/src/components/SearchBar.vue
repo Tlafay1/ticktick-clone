@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useTaskStore } from '@/stores/tasks'
+import Icon from './Icon.vue'
 import { tasksApi } from '@/api'
 import type { Task } from '@/types'
 
@@ -38,7 +39,7 @@ onUnmounted(() => window.removeEventListener('tt:focus-search', focusSearch))
 
 <template>
   <div class="search-bar" :class="{ active: searching }">
-    <span class="search-icon">🔍</span>
+    <span class="search-icon"><Icon name="search" :size="14" /></span>
     <input
       ref="inputEl"
       v-model="query"
