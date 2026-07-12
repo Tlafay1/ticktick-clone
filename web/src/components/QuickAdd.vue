@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useTaskStore } from '@/stores/tasks'
 import { useProjectStore } from '@/stores/projects'
 import { useTagStore } from '@/stores/tags'
@@ -103,6 +103,10 @@ function focus() {
   open.value = true
   setTimeout(() => input.value?.focus(), 50)
 }
+
+// Raccourci global Ctrl+Maj+A
+onMounted(() => window.addEventListener('tt:focus-quickadd', focus))
+onUnmounted(() => window.removeEventListener('tt:focus-quickadd', focus))
 </script>
 
 <template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { useTaskStore } from '@/stores/tasks'
 import { tasksApi } from '@/api'
 import type { Task } from '@/types'
@@ -28,12 +28,19 @@ watch(query, (q) => {
 function clear() {
   query.value = ''
 }
+
+// Raccourci global Ctrl+F
+const inputEl = ref<HTMLInputElement>()
+function focusSearch() { inputEl.value?.focus() }
+onMounted(() => window.addEventListener('tt:focus-search', focusSearch))
+onUnmounted(() => window.removeEventListener('tt:focus-search', focusSearch))
 </script>
 
 <template>
   <div class="search-bar" :class="{ active: searching }">
     <span class="search-icon">🔍</span>
     <input
+      ref="inputEl"
       v-model="query"
       placeholder="Rechercher…"
       class="search-input"

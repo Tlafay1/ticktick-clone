@@ -61,6 +61,15 @@ describe('QuickAdd', () => {
     expect(payload.priority).toBe(5)
   })
 
+  it("s'ouvre sur l'événement global tt:focus-quickadd (raccourci Ctrl+Maj+A)", async () => {
+    seedStores()
+    const wrapper = mount(QuickAdd)
+    expect(wrapper.find('input').exists()).toBe(false)
+    window.dispatchEvent(new CustomEvent('tt:focus-quickadd'))
+    await new Promise(r => setTimeout(r, 80))
+    expect(wrapper.find('input').exists()).toBe(true)
+  })
+
   it('crée un tag manquant puis l\'attache', async () => {
     const { create, tagStore } = seedStores()
     const createTag = vi.spyOn(tagStore, 'create').mockResolvedValue(
