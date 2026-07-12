@@ -135,6 +135,8 @@ h1 {
   border: 1px solid var(--border);
   border-radius: 8px;
   outline: none;
+  background: var(--bg);
+  color: var(--text);
 }
 .card input:focus {
   border-color: var(--primary);

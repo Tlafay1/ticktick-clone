@@ -144,9 +144,19 @@ Infra de test de composants ajoutée (`@vue/test-utils` + happy-dom), `pytest-as
   reconnus désormais (fr d'abord, en secours anglais).
 - Le panneau des listes n'apparaît plus hors contexte Tâches (fidèle TickTick).
 
-### P3 — polish restant
-1. « Dates spécifiques » de récurrence.
-2. Capacitor Android : squelette (pas encore de build APK réel).
+### ✅ Traités (5e passe, juillet 2026)
+- ~~« Dates spécifiques » de récurrence~~ : mode RDATE dans l'éditeur (liste de
+  dates), avance/épuisement gérés backend (dateutil) et web (nextOccurrence).
+- ~~Capacitor Android squelette~~ : projet complet (`mobile/` : package.json,
+  plateforme `android/` générée, plugins local-notifications/preferences/
+  push-notifications), enregistrement FCM au démarrage, adaptateur natif
+  branché (`setPlatform`), **URL de serveur configurable** sur l'écran de
+  connexion (préfixe API + WebSocket — indispensable en app embarquée),
+  `mobile/README.md` pour le build Android Studio. Reste à faire par
+  l'utilisateur : `google-services.json` + build APK (SDK côté Windows).
+
+### Reste (hors périmètre auto-testable)
+- Build APK signé + tests sur appareil (checklist `docs/acceptance-checklist.md`).
 
 ## 6. API développeur & webhooks (à construire)
 
