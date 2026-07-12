@@ -135,10 +135,18 @@ Infra de test de composants ajoutée (`@vue/test-utils` + happy-dom), `pytest-as
 - ~~Réordonnancement des dossiers~~ (drag d'en-tête sur en-tête, persisté).
 - Bouton de tri (⇅) par vue ; vue Jour du calendrier.
 
+### ✅ Traités (4e passe, juillet 2026)
+- ~~Historique de recherche~~ : suggestions au focus + Effacer (endpoint existant).
+- ~~Electron débranché~~ : détection plateforme réelle, tray alimenté (compteur du
+  jour + chrono focus), rappels via notifications natives du main (Terminer/Snooze),
+  fenêtre Saisie rapide `/quick-add` fonctionnelle (l'URL `/#/quick-add` était morte).
+- Bug NLP : chrono ne parsait que l'anglais — « demain », « lundi prochain », « 14h »
+  reconnus désormais (fr d'abord, en secours anglais).
+- Le panneau des listes n'apparaît plus hors contexte Tâches (fidèle TickTick).
+
 ### P3 — polish restant
-1. Historique de recherche exposé ; « dates spécifiques » de récurrence.
-2. Clients natifs réels (Capacitor Android squelette, Electron renderer sans
-   `window.electronAPI`).
+1. « Dates spécifiques » de récurrence.
+2. Capacitor Android : squelette (pas encore de build APK réel).
 
 ## 6. API développeur & webhooks (à construire)
 
