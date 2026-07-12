@@ -150,20 +150,23 @@ onUnmounted(() => window.removeEventListener('tt:focus-quickadd', focus))
 </template>
 
 <style scoped>
-.quick-add { padding: 8px 16px 4px; }
+.quick-add { padding: 10px 16px 6px; }
 
+/* Barre permanente en tête de liste, façon TickTick */
 .quick-add-trigger {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 4px;
-  color: var(--text-secondary);
-  cursor: pointer;
+  padding: 8px 12px;
+  color: var(--text-muted);
+  cursor: text;
+  border: 1px solid var(--border);
   border-radius: 8px;
+  background: var(--bg);
 }
-.quick-add-trigger:hover { color: var(--primary); }
-.plus { font-size: 18px; }
-.placeholder { font-size: 14px; }
+.quick-add-trigger:hover { border-color: var(--primary); }
+.plus { font-size: 15px; line-height: 1; }
+.placeholder { font-size: 13.5px; }
 
 .quick-add-form {
   background: var(--bg);

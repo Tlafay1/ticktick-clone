@@ -365,6 +365,9 @@ watch(() => route.fullPath, loadView)
 
       <SearchBar v-if="!isTrash" @reset="loadView" />
 
+      <!-- Barre d'ajout en tête de liste, comme TickTick -->
+      <QuickAdd v-if="!isCompleted && !isTrash" :project-id="currentProjectId" />
+
       <div class="task-list-scroll">
         <!-- Corbeille -->
         <template v-if="isTrash">
@@ -446,8 +449,6 @@ watch(() => route.fullPath, loadView)
         </template>
 
         <div v-if="taskStore.loading" class="loading">Chargement…</div>
-
-        <QuickAdd v-if="!isCompleted && !isTrash" :project-id="currentProjectId" />
       </div>
     </main>
 
