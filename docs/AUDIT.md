@@ -110,18 +110,29 @@ Infra de test de composants ajoutée (`@vue/test-utils` + happy-dom), `pytest-as
 - ~~week_start + agenda 30 j~~ ; ~~pause/reprise du focus~~ ; ~~raccourcis clavier~~ (Ctrl+Maj+A, Ctrl+F, Ctrl+Maj+M, Ctrl+Alt+T/N/1/C, ?, Échap) ; ~~listes archivées/désarchivage~~ ; ~~fusion de tags (UI)~~ ; ~~persistance du repli des dossiers~~ ; ~~sous-tâches imbriquées en liste~~ ; ~~refonte du panneau de détail~~ ; ~~N+1 rappels~~.
 - ~~Événements ICS~~ : chaîne complète (parsing icalendar + dépliage RRULE, refresh Celery horaire + action `/refresh/`, endpoint `/api/calendar-events/`, réglages + rendu calendrier).
 
-### P1 — restant
-1. **Rappels d'habitude non diffusés** (aucune tâche Celery) — la fonctionnalité est inerte.
+### ✅ Traités (2e passe, juillet 2026)
+- ~~Rappels d'habitude non diffusés~~ : tâche Celery `dispatch_habit_reminders`
+  (beat 60 s, idempotente via `last_sent_on`, fréquence-aware, web push + FCM).
+- ~~Vue calendrier Jour~~ (grille horaire commune Jour/Semaine).
+- ~~Streaks fréquence-aware~~ (grâce du jour en cours, jours précis, intervalle,
+  objectif hebdo) + fréquences avancées et motto dans le formulaire.
+- ~~Édition~~ d'habitude (menu ⋯ → Modifier) et de countdown (✎).
+- ~~Bouton de tri (⇅)~~ en en-tête de liste (manuel/date/titre/priorité, par vue).
+- ~~planned_date/end_date dans le détail~~ : **non-objectif** — le vrai TickTick
+  n'a que début/échéance (déjà exposés « Début »/« Échéance ») ; planned/end
+  restent des champs API-only (ajout développeur assumé).
+- Bugs corrigés : thème non appliqué au refresh hors vue liste ; tâches
+  « disparues » après drag calendrier (filtre due_* → scheduled_*) ; colonne
+  de détail vide sur sélection périmée.
 
 ### P2 — restant
-2. **Vue calendrier Jour** (semaine/mois/agenda existent).
-3. **Streak d'habitude conscient de la fréquence** (specific_days/interval/weekly_goal) + fréquences avancées dans le formulaire.
-4. **Édition** d'habitude et de countdown (create/pin/delete seulement) ; **sons d'ambiance** du focus factices ; **stats de focus** jamais affichées.
-5. **Exposer planned_date/end_date** dans le panneau de détail (champs déjà typés).
+1. **Sons d'ambiance** du focus factices ; **stats de focus** jamais affichées.
 
 ### P3 — polish restant
-6. Multi-sélection de tâches + actions groupées ; historique de recherche exposé.
-7. Convergence des « dates spécifiques » de récurrence ; réordonnancement des dossiers.
+2. Multi-sélection de tâches + actions groupées ; historique de recherche exposé.
+3. Convergence des « dates spécifiques » de récurrence ; réordonnancement des dossiers.
+4. UI : rail d'icônes vertical (double sidebar TickTick), mini-calendrier en bas
+   de sidebar, compteurs par liste.
 
 ## 6. API développeur & webhooks (à construire)
 
