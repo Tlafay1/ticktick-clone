@@ -15,6 +15,8 @@ import { useUiState } from '@/composables/useUiState'
 import { watch } from 'vue'
 import TagManager from './TagManager.vue'
 import Icon from './Icon.vue'
+import IconRail from './IconRail.vue'
+import MiniCalendar from './MiniCalendar.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -239,6 +241,9 @@ function cycleTheme() {
   <!-- Voile cliquable pour fermer le tiroir -->
   <div v-if="sidebarOpen" class="drawer-overlay" @click="closeSidebar" />
 
+  <!-- Rail d'icônes (desktop uniquement, comme TickTick) -->
+  <IconRail />
+
   <aside class="sidebar" :class="{ open: sidebarOpen }">
     <div class="sidebar-top">
       <div class="app-title">TickTick</div>
@@ -258,10 +263,12 @@ function cycleTheme() {
       </RouterLink>
     </nav>
 
-    <div class="section-header">
+    <!-- Outils : sur desktop ils vivent dans le rail d'icônes ; ces entrées
+         ne servent qu'au tiroir mobile (rail masqué). -->
+    <div class="section-header mobile-only">
       <span>Outils</span>
     </div>
-    <nav class="nav-section">
+    <nav class="nav-section mobile-only">
       <RouterLink to="/calendar"   class="nav-item"><span class="nav-icon"><Icon name="calendar" /></span><span class="nav-label">Calendrier</span></RouterLink>
       <RouterLink to="/timeline"   class="nav-item"><span class="nav-icon"><Icon name="timeline" /></span><span class="nav-label">Timeline</span></RouterLink>
       <RouterLink to="/eisenhower" class="nav-item"><span class="nav-icon"><Icon name="grid" /></span><span class="nav-label">Eisenhower</span></RouterLink>
@@ -496,11 +503,12 @@ function cycleTheme() {
         <span class="nav-icon"><Icon name="trash" /></span>
         <span class="nav-label">Corbeille</span>
       </RouterLink>
-      <RouterLink to="/settings" class="nav-item">
+      <!-- Sur desktop : réglages/thème/déconnexion vivent dans le rail. -->
+      <RouterLink to="/settings" class="nav-item mobile-only">
         <span class="nav-icon"><Icon name="settings" /></span>
         <span class="nav-label">Paramètres</span>
       </RouterLink>
-      <div class="sidebar-actions">
+      <div class="sidebar-actions mobile-only">
         <button class="icon-btn theme-btn" :title="`Thème : ${userStore.theme}`" @click="cycleTheme">
           <Icon :name="themeIcons[userStore.theme]" :size="14" />
         </button>
@@ -509,6 +517,7 @@ function cycleTheme() {
           <span class="nav-label">Se déconnecter</span>
         </button>
       </div>
+      <MiniCalendar class="desktop-only" />
     </div>
   </aside>
 </template>
@@ -528,6 +537,13 @@ function cycleTheme() {
 /* Hamburger + voile : masqués sur desktop, visibles en tiroir sur mobile. */
 .drawer-toggle { display: none; }
 .drawer-overlay { display: none; }
+
+/* Entrées réservées au tiroir mobile (le rail les porte sur desktop). */
+.mobile-only { display: none !important; }
+@media (max-width: 768px) {
+  .mobile-only { display: flex !important; }
+  .desktop-only { display: none !important; }
+}
 
 @media (max-width: 768px) {
   .drawer-toggle {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import Sidebar from '@/components/Sidebar.vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 import TaskContextMenu from '@/components/TaskContextMenu.vue'
@@ -78,13 +79,25 @@ function icsEventHour(e: CalendarEvent) {
   return new Date(e.start).getHours()
 }
 
+// Deep-link ?date=YYYY-MM-DD (mini-calendrier de la sidebar) : centre la vue.
+const route = useRoute()
+
+function applyRouteDate() {
+  const q = route.query.date
+  if (typeof q === 'string' && !Number.isNaN(Date.parse(`${q}T00:00:00`))) {
+    pivot.value = new Date(`${q}T00:00:00`)
+  }
+}
+
 onMounted(async () => {
+  applyRouteDate()
   await loadTasks()
   if (!projectStore.projects.length) await projectStore.load()
   if (!tagStore.tags.length) await tagStore.load()
   await loadSideTasks()
 })
 watch([viewMode, pivot], loadTasks)
+watch(() => route.query.date, applyRouteDate)
 
 // Rafraîchir quand l'utilisateur ferme le panneau de détail (tâche possiblement modifiée)
 watch(() => taskStore.selectedId, (newId, oldId) => {
