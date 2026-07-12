@@ -396,6 +396,7 @@ function cycleTheme() {
       :project="contextMenu.target"
       :x="contextMenu.x"
       :y="contextMenu.y"
+      @edit="editingProject = contextMenu.target"
       @close="contextMenu = null"
     />
 
