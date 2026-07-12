@@ -13,7 +13,70 @@ const presets = ref<Partial<Habit>[]>([])
 
 const today = new Date().toISOString().slice(0, 10)
 
-const newHabit = ref({ name: '', icon: '⭐', color: '#4772fa', goal_type: 'binary' as 'binary' | 'numeric', goal_value: 1, goal_unit: '', frequency: 'daily' as Habit['frequency'] })
+// Formulaire création/édition (mêmes champs, editingId ≠ null = édition)
+const emptyForm = () => ({
+  name: '', icon: '⭐', color: '#4772fa',
+  goal_type: 'binary' as 'binary' | 'numeric', goal_value: 1, goal_unit: '',
+  frequency: 'daily' as Habit['frequency'],
+  days: [] as number[],   // specific_days (0 = lundi, comme le backend)
+  every: 3,               // interval : « tous les N jours »
+  times: 3,               // weekly_goal : « N fois / semaine »
+  motto: '',
+})
+const form = ref(emptyForm())
+const editingId = ref<number | null>(null)
+
+const DOW = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+
+function toggleDay(d: number) {
+  const i = form.value.days.indexOf(d)
+  if (i >= 0) form.value.days.splice(i, 1)
+  else form.value.days.push(d)
+}
+
+function buildPayload(): Partial<Habit> {
+  const f = form.value
+  const freq_config =
+    f.frequency === 'specific_days' ? { days: [...f.days].sort((a, b) => a - b) }
+    : f.frequency === 'interval' ? { every: f.every }
+    : f.frequency === 'weekly_goal' ? { times: f.times }
+    : {}
+  return {
+    name: f.name, icon: f.icon, color: f.color, goal_type: f.goal_type,
+    goal_value: f.goal_value, goal_unit: f.goal_unit, motto: f.motto,
+    frequency: f.frequency, freq_config,
+  }
+}
+
+function startEdit(h: Habit) {
+  editingId.value = h.id
+  form.value = {
+    name: h.name, icon: h.icon || '⭐', color: h.color || '#4772fa',
+    goal_type: h.goal_type, goal_value: h.goal_value, goal_unit: h.goal_unit,
+    frequency: h.frequency,
+    days: [...((h.freq_config?.days as number[]) ?? [])],
+    every: (h.freq_config?.every as number) ?? 3,
+    times: (h.freq_config?.times as number) ?? 3,
+    motto: h.motto ?? '',
+  }
+  menuOpenId.value = null
+  showCreate.value = true
+}
+
+function freqLabel(h: Habit) {
+  switch (h.frequency) {
+    case 'specific_days': {
+      const days = (h.freq_config?.days as number[]) ?? []
+      return days.map(d => DOW[d]).join(', ')
+    }
+    case 'interval': return `Tous les ${(h.freq_config?.every as number) ?? 1} j`
+    case 'weekly_goal': return `${(h.freq_config?.times as number) ?? 1}×/semaine`
+    case 'weekly': return 'Hebdomadaire'
+    default: return ''
+  }
+}
+
+const menuOpenId = ref<number | null>(null)
 
 async function load() {
   loading.value = true
@@ -65,12 +128,19 @@ async function checkInNumeric(habit: Habit) {
   else checkIns.value[habit.id].push(result)
 }
 
-async function create() {
-  const h = await habitsApi.create({ ...newHabit.value })
-  habits.value.push(h)
-  checkIns.value[h.id] = []
+async function save() {
+  if (editingId.value) {
+    const h = await habitsApi.update(editingId.value, buildPayload())
+    const idx = habits.value.findIndex(x => x.id === h.id)
+    if (idx >= 0) habits.value[idx] = h
+  } else {
+    const h = await habitsApi.create(buildPayload())
+    habits.value.push(h)
+    checkIns.value[h.id] = []
+  }
   showCreate.value = false
-  newHabit.value = { name: '', icon: '⭐', color: '#4772fa', goal_type: 'binary', goal_value: 1, goal_unit: '', frequency: 'daily' }
+  editingId.value = null
+  form.value = emptyForm()
 }
 
 async function fromPreset(preset: Partial<Habit>) {
@@ -83,6 +153,7 @@ async function fromPreset(preset: Partial<Habit>) {
 async function archive(h: Habit) {
   await habitsApi.update(h.id, { archived: true })
   habits.value = habits.value.filter(x => x.id !== h.id)
+  menuOpenId.value = null
 }
 
 const activeHabits = computed(() => habits.value.filter(h => !h.archived))
@@ -159,34 +230,55 @@ function isDoneOnDay(habit: Habit, date: string) {
         </div>
       </div>
 
-      <!-- Formulaire création -->
+      <!-- Formulaire création / édition -->
       <div v-if="showCreate" class="create-form card">
         <div class="form-row">
           <div class="icon-picker">
-            <button v-for="ic in ICONS" :key="ic" class="icon-opt" :class="{ sel: newHabit.icon === ic }" @click="newHabit.icon = ic">{{ ic }}</button>
+            <button v-for="ic in ICONS" :key="ic" class="icon-opt" :class="{ sel: form.icon === ic }" @click="form.icon = ic">{{ ic }}</button>
           </div>
-          <input v-model="newHabit.name" placeholder="Nom de l'habitude" class="field-input flex-1" />
+          <input v-model="form.name" placeholder="Nom de l'habitude" class="field-input flex-1" />
         </div>
         <div class="form-row">
           <div class="color-row">
-            <button v-for="c in COLORS" :key="c" class="color-dot" :class="{ sel: newHabit.color === c }" :style="`background:${c}`" @click="newHabit.color = c" />
+            <button v-for="c in COLORS" :key="c" class="color-dot" :class="{ sel: form.color === c }" :style="`background:${c}`" @click="form.color = c" />
           </div>
-          <select v-model="newHabit.frequency" class="freq-select">
+          <select v-model="form.frequency" class="freq-select">
             <option value="daily">Quotidien</option>
-            <option value="weekly">Hebdomadaire</option>
+            <option value="specific_days">Jours précis</option>
+            <option value="interval">Intervalle</option>
+            <option value="weekly_goal">Objectif hebdo</option>
           </select>
         </div>
+        <!-- Options selon la fréquence -->
+        <div v-if="form.frequency === 'specific_days'" class="form-row dow-row">
+          <button
+            v-for="(d, i) in DOW" :key="d"
+            class="dow-btn" :class="{ sel: form.days.includes(i) }"
+            @click="toggleDay(i)"
+          >{{ d }}</button>
+        </div>
+        <div v-else-if="form.frequency === 'interval'" class="form-row">
+          <label class="freq-opt-label">Tous les
+            <input v-model.number="form.every" type="number" min="1" max="365" class="num-input" /> jours
+          </label>
+        </div>
+        <div v-else-if="form.frequency === 'weekly_goal'" class="form-row">
+          <label class="freq-opt-label">
+            <input v-model.number="form.times" type="number" min="1" max="7" class="num-input" /> fois par semaine
+          </label>
+        </div>
         <div class="form-row">
-          <label class="rec-radio"><input type="radio" v-model="newHabit.goal_type" value="binary" /> Binaire (oui/non)</label>
-          <label class="rec-radio"><input type="radio" v-model="newHabit.goal_type" value="numeric" /> Numérique</label>
-          <template v-if="newHabit.goal_type === 'numeric'">
-            <input v-model.number="newHabit.goal_value" type="number" min="1" class="num-input" />
-            <input v-model="newHabit.goal_unit" placeholder="unité" class="unit-input" />
+          <label class="rec-radio"><input type="radio" v-model="form.goal_type" value="binary" /> Binaire (oui/non)</label>
+          <label class="rec-radio"><input type="radio" v-model="form.goal_type" value="numeric" /> Numérique</label>
+          <template v-if="form.goal_type === 'numeric'">
+            <input v-model.number="form.goal_value" type="number" min="1" class="num-input" />
+            <input v-model="form.goal_unit" placeholder="unité" class="unit-input" />
           </template>
         </div>
+        <input v-model="form.motto" placeholder="Motto (optionnel, affiché dans les rappels)" class="field-input" />
         <div class="form-actions">
-          <button class="btn btn-ghost" @click="showCreate = false">Annuler</button>
-          <button class="btn btn-primary" :disabled="!newHabit.name.trim()" @click="create">Créer</button>
+          <button class="btn btn-ghost" @click="showCreate = false; editingId = null; form = emptyForm()">Annuler</button>
+          <button class="btn btn-primary" :disabled="!form.name.trim()" @click="save">{{ editingId ? 'Enregistrer' : 'Créer' }}</button>
         </div>
       </div>
 
@@ -208,11 +300,18 @@ function isDoneOnDay(habit: Habit, date: string) {
             <div class="habit-info">
               <div class="habit-name">{{ h.name }}</div>
               <div class="habit-meta">
+                <span v-if="freqLabel(h)" class="freq-label">{{ freqLabel(h) }}</span>
                 <span class="streak-label">{{ streakLabel(h.streak) }}</span>
                 <span class="max-streak" v-if="h.max_streak > 0">max {{ h.max_streak }}</span>
               </div>
             </div>
-            <button class="icon-btn habit-menu" @click="archive(h)" title="Archiver">⋯</button>
+            <div class="habit-menu-wrap">
+              <button class="icon-btn habit-menu" @click="menuOpenId = menuOpenId === h.id ? null : h.id" title="Options">⋯</button>
+              <div v-if="menuOpenId === h.id" class="habit-dropdown" @mouseleave="menuOpenId = null">
+                <button class="menu-item" @click="startEdit(h)">Modifier</button>
+                <button class="menu-item" @click="archive(h)">Archiver</button>
+              </div>
+            </div>
           </div>
 
           <!-- Check-in binaire -->
@@ -389,6 +488,48 @@ function isDoneOnDay(habit: Habit, date: string) {
 .habit-meta { display: flex; gap: 8px; margin-top: 2px; align-items: center; }
 .streak-label { font-size: 12px; color: var(--text-secondary); }
 .max-streak { font-size: 11px; color: var(--text-muted); }
+.freq-label { font-size: 11px; color: var(--text-muted); }
+
+/* Sélecteur de jours (fréquence « jours précis ») */
+.dow-row { gap: 6px; }
+.dow-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.dow-btn.sel { background: var(--primary-soft); border-color: var(--primary); color: var(--primary); }
+.freq-opt-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+
+/* Menu ⋯ de carte d'habitude */
+.habit-menu-wrap { position: relative; }
+.habit-dropdown {
+  position: absolute;
+  right: 0;
+  top: 26px;
+  z-index: 20;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  min-width: 130px;
+  overflow: hidden;
+}
+.habit-dropdown .menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.habit-dropdown .menu-item:hover { background: var(--bg-hover); }
 .habit-menu { opacity: 0; color: var(--text-muted); }
 .habit-card:hover .habit-menu { opacity: 1; }
 

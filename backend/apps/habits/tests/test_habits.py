@@ -87,3 +87,81 @@ def test_max_streak_finds_longest_run(api):
             format="json",
         )
     assert obj.max_streak() == 3
+
+
+# ── Streaks selon la fréquence (module 6) ────────────────────────────────────
+
+
+def _habit_obj(user, **kwargs):
+    from apps.habits.models import Habit
+
+    return Habit.objects.create(user=user, name="H", **kwargs)
+
+
+def _check(habit, day):
+    from apps.habits.models import HabitCheckIn
+
+    HabitCheckIn.objects.create(habit=habit, date=day, completed=True)
+
+
+def test_daily_streak_today_pending_does_not_break(user):
+    """Hier et avant-hier faits, aujourd'hui pas encore : streak = 2 (en cours)."""
+    habit = _habit_obj(user)
+    today = date.today()
+    _check(habit, today - timedelta(days=1))
+    _check(habit, today - timedelta(days=2))
+    assert habit.streak(today=today) == 2
+
+
+def test_specific_days_skips_unscheduled_days(user):
+    """Lun-mer-ven : le mardi/jeudi non planifiés ne cassent pas la série."""
+    habit = _habit_obj(user, frequency="specific_days", freq_config={"days": [0, 2, 4]})
+    monday = date(2026, 7, 6)   # lundi
+    _check(habit, monday)                       # lun
+    _check(habit, monday + timedelta(days=2))   # mer
+    _check(habit, monday + timedelta(days=4))   # ven
+    # Dimanche suivant (non planifié) : la série des 3 jours planifiés tient.
+    assert habit.streak(today=monday + timedelta(days=6)) == 3
+    assert habit.max_streak() == 3
+
+
+def test_specific_days_missed_scheduled_day_breaks(user):
+    habit = _habit_obj(user, frequency="specific_days", freq_config={"days": [0, 2, 4]})
+    monday = date(2026, 7, 6)
+    _check(habit, monday)                       # lun fait
+    # mercredi manqué
+    _check(habit, monday + timedelta(days=4))   # ven fait
+    assert habit.streak(today=monday + timedelta(days=4)) == 1
+    assert habit.max_streak() == 1
+
+
+def test_interval_streak_allows_gaps_up_to_n_days(user):
+    habit = _habit_obj(user, frequency="interval", freq_config={"every": 3})
+    today = date.today()
+    _check(habit, today - timedelta(days=6))
+    _check(habit, today - timedelta(days=3))
+    _check(habit, today)
+    assert habit.streak(today=today) == 3
+    assert habit.max_streak() == 3
+    # Un trou > 3 jours casse.
+    habit2 = _habit_obj(user, frequency="interval", freq_config={"every": 3})
+    _check(habit2, today - timedelta(days=5))
+    _check(habit2, today)
+    assert habit2.streak(today=today) == 1
+
+
+def test_weekly_goal_counts_consecutive_achieved_weeks(user):
+    """3×/semaine : 2 semaines pleines + semaine courante en cours → streak 2."""
+    habit = _habit_obj(user, frequency="weekly_goal", freq_config={"times": 3})
+    today = date(2026, 7, 8)  # mercredi
+    week_start = today - timedelta(days=today.weekday())
+    for w in (1, 2):  # deux semaines précédentes complètes
+        for d in (0, 2, 4):
+            _check(habit, week_start - timedelta(days=7 * w) + timedelta(days=d))
+    _check(habit, week_start)  # semaine courante : 1/3 seulement (en cours)
+    assert habit.streak(today=today) == 2
+    # Semaine courante atteinte → 3.
+    _check(habit, week_start + timedelta(days=1))
+    _check(habit, week_start + timedelta(days=2))
+    assert habit.streak(today=today) == 3
+    assert habit.max_streak() == 3

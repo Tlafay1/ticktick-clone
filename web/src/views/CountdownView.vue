@@ -10,6 +10,7 @@ const loading = ref(true)
 const showCreate = ref(false)
 
 const draft = ref({ title: '', target_date: '', description: '', pinned: false })
+const editingId = ref<number | null>(null)
 
 onMounted(async () => {
   try {
@@ -19,12 +20,25 @@ onMounted(async () => {
   }
 })
 
-async function create() {
+async function save() {
   if (!draft.value.title.trim() || !draft.value.target_date) return
-  const c = await countdownApi.create({ ...draft.value })
-  countdowns.value.unshift(c)
+  if (editingId.value) {
+    const c = await countdownApi.update(editingId.value, { ...draft.value })
+    const idx = countdowns.value.findIndex(x => x.id === c.id)
+    if (idx >= 0) countdowns.value[idx] = c
+  } else {
+    const c = await countdownApi.create({ ...draft.value })
+    countdowns.value.unshift(c)
+  }
   showCreate.value = false
+  editingId.value = null
   draft.value = { title: '', target_date: '', description: '', pinned: false }
+}
+
+function startEdit(c: Countdown) {
+  editingId.value = c.id
+  draft.value = { title: c.title, target_date: c.target_date, description: c.description ?? '', pinned: c.pinned }
+  showCreate.value = true
 }
 
 async function togglePin(c: Countdown) {
@@ -71,7 +85,7 @@ const sorted = computed(() => [
 
       <!-- Formulaire -->
       <div v-if="showCreate" class="create-form card">
-        <input v-model="draft.title" placeholder="Titre (ex: Vacances, Anniversaire…)" class="field-input" @keydown.enter="create" />
+        <input v-model="draft.title" placeholder="Titre (ex: Vacances, Anniversaire…)" class="field-input" @keydown.enter="save" />
         <div class="form-row">
           <div class="form-group">
             <label class="field-label">Date cible</label>
@@ -84,8 +98,8 @@ const sorted = computed(() => [
         </div>
         <textarea v-model="draft.description" placeholder="Note (markdown supporté)…" class="desc-input" rows="3" />
         <div class="form-actions">
-          <button class="btn btn-ghost" @click="showCreate = false">Annuler</button>
-          <button class="btn btn-primary" :disabled="!draft.title.trim() || !draft.target_date" @click="create">Créer</button>
+          <button class="btn btn-ghost" @click="showCreate = false; editingId = null; draft = { title: '', target_date: '', description: '', pinned: false }">Annuler</button>
+          <button class="btn btn-primary" :disabled="!draft.title.trim() || !draft.target_date" @click="save">{{ editingId ? 'Enregistrer' : 'Créer' }}</button>
         </div>
       </div>
 
@@ -103,6 +117,7 @@ const sorted = computed(() => [
             <span v-if="c.pinned" class="pin-icon">📌</span>
             <span class="card-title">{{ c.title }}</span>
             <div class="card-actions">
+              <button class="icon-btn" title="Modifier" @click="startEdit(c)">✎</button>
               <button class="icon-btn" :title="c.pinned ? 'Désépingler' : 'Épingler'" @click="togglePin(c)">{{ c.pinned ? '📌' : '📍' }}</button>
               <button class="icon-btn" title="Supprimer" @click="remove(c)">🗑</button>
             </div>
