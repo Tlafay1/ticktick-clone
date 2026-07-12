@@ -365,11 +365,13 @@ describe('Jalon 2 — organisation', () => {
     })
     vi.stubGlobal('fetch', (async (url: RequestInfo | URL) => {
       const u = String(url)
-      const payload = u.startsWith('/api/reminders/')
-        ? [{ id: 90001, task: 1, trigger_type: 'relative', minutes_before: 0, trigger_at: null, annoying: true }]
-        : u.startsWith('/api/me/')
-          ? { settings: {} }
-          : [{ id: 1, title: 'Tâche urgente', status: 0, due_date: new Date().toISOString() }]
+      // Contrat réel : TaskSerializer imbrique les rappels dans /api/tasks/.
+      const payload = u.startsWith('/api/me/')
+        ? { settings: {} }
+        : [{
+            id: 1, title: 'Tâche urgente', status: 0, due_date: new Date().toISOString(),
+            reminders: [{ id: 90001, trigger_type: 'relative', minutes_before: 0, trigger_at: null, annoying: true }],
+          }]
       return new Response(JSON.stringify(payload), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

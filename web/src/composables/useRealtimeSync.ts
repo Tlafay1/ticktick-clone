@@ -23,6 +23,9 @@ export function useRealtimeSync() {
 
     ws = new WebSocket(url)
 
+    // Reconnexion réussie : le backoff exponentiel repart de zéro.
+    ws.onopen = () => { reconnectCount = 0 }
+
     ws.onmessage = (ev) => {
       try {
         const msg: SyncMessage = JSON.parse(ev.data)

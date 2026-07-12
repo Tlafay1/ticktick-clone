@@ -66,15 +66,8 @@ async function onDropSection(sectionId: number, isDone: boolean) {
 
   if (isDone) {
     await taskStore.complete(t.id)
-  } else if (t.status === 2) {
-    // Déplacer hors de la colonne Done → réouvrir
-    const updated = await tasksApi.update(t.id, {
-      section: sectionId === UNSECTIONED_ID ? null : sectionId,
-      status: 0,
-    })
-    const idx = taskStore.tasks.findIndex(x => x.id === t.id)
-    if (idx >= 0) taskStore.tasks[idx] = updated
   } else {
+    // Changement de colonne ; sortir de la colonne Done réouvre (status 0).
     const updated = await tasksApi.update(t.id, {
       section: sectionId === UNSECTIONED_ID ? null : sectionId,
       status: 0,

@@ -1,5 +1,5 @@
 import { onUnmounted } from 'vue'
-import { tasksApi, remindersApi } from '@/api'
+import { tasksApi } from '@/api'
 import { http } from '@/api/client'
 import type { User } from '@/types'
 
@@ -33,13 +33,9 @@ export function useReminderNotifications() {
     }
 
     for (const task of tasks) {
-      if (!task.due_date) continue
-      let reminders: Awaited<ReturnType<typeof remindersApi.list>>
-      try {
-        reminders = await remindersApi.list(task.id)
-      } catch {
-        continue
-      }
+      // Les rappels sont imbriqués dans la réponse /api/tasks/ (TaskSerializer) :
+      // plus d'aller-retour par tâche (l'ancien N+1 coûtait un GET/tâche/minute).
+      const reminders = task.reminders ?? []
       for (const r of reminders) {
         if (notified.has(r.id)) continue
 

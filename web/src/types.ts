@@ -100,6 +100,8 @@ export interface Task {
   pinned_at: string | null
   start_date: string | null
   due_date: string | null
+  planned_date: string | null
+  end_date: string | null
   is_all_day: boolean
   timezone_name: string
   rrule: string
@@ -109,9 +111,20 @@ export interface Task {
   estimated_pomos: number
   completed_at: string | null
   trashed_at: string | null
+  archived_at: string | null
   created_at: string
   modified_at: string
   check_items: CheckItem[]
+  reminders: NestedReminder[]
+}
+
+/** Rappel imbriqué dans TaskSerializer (sans FK task). */
+export interface NestedReminder {
+  id: number
+  trigger_type: 'relative' | 'absolute'
+  minutes_before: number | null
+  trigger_at: string | null
+  annoying: boolean
 }
 
 export interface Reminder {

@@ -84,9 +84,12 @@ function projectsInGroup(groupId: number) {
   return userProjects.value.filter((p) => p.group === groupId)
 }
 
-const collapsedGroups = ref<Record<number, boolean>>({})
+// Repli des dossiers : persisté côté API (ProjectGroup.collapsed).
+function isGroupCollapsed(id: number) {
+  return projectStore.groups.find((g) => g.id === id)?.collapsed ?? false
+}
 function toggleGroup(id: number) {
-  collapsedGroups.value[id] = !collapsedGroups.value[id]
+  projectStore.updateGroup(id, { collapsed: !isGroupCollapsed(id) })
 }
 
 // Nouveau dossier
@@ -255,11 +258,11 @@ function cycleTheme() {
           @drop.prevent="onGroupDrop(g.id)"
           @dragleave="onGroupDragLeave"
         >
-          <span class="nav-icon">{{ collapsedGroups[g.id] ? '▶' : '▼' }}</span>
+          <span class="nav-icon">{{ isGroupCollapsed(g.id) ? '▶' : '▼' }}</span>
           <span class="nav-label">{{ g.name }}</span>
           <span class="group-count">{{ projectsInGroup(g.id).length }}</span>
         </div>
-        <template v-if="!collapsedGroups[g.id]">
+        <template v-if="!isGroupCollapsed(g.id)">
           <div
             v-for="p in projectsInGroup(g.id)"
             :key="p.id"
