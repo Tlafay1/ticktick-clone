@@ -264,7 +264,7 @@ function cycleTheme() {
             @contextmenu.prevent="showProjectMenu($event, p)"
             @dragstart="onProjectDragStart($event, p)"
           >
-            <span class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+            <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
             <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
             <span class="nav-label">{{ p.name }}</span>
             <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
@@ -307,7 +307,7 @@ function cycleTheme() {
         @drop="listDrop(idx)"
         @dragend="listDragEnd"
       >
-        <span class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+        <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
         <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
         <span class="nav-label">{{ p.name }}</span>
         <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>

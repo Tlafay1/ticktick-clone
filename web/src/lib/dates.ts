@@ -5,6 +5,7 @@ import {
   isSameYear,
   startOfDay,
 } from 'date-fns'
+import { fr } from 'date-fns/locale'
 
 export const today = () => startOfDay(new Date())
 export const tomorrow = () => addDays(today(), 1)
@@ -16,10 +17,12 @@ export function dueLabel(iso: string | null, allDay: boolean): string {
   if (!iso) return ''
   const d = new Date(iso)
   let day: string
-  if (isSameDay(d, today())) day = 'Today'
-  else if (isSameDay(d, tomorrow())) day = 'Tomorrow'
-  else if (isSameDay(d, addDays(today(), -1))) day = 'Yesterday'
-  else day = isSameYear(d, new Date()) ? format(d, 'MMM d') : format(d, 'MMM d, yyyy')
+  if (isSameDay(d, today())) day = "Aujourd'hui"
+  else if (isSameDay(d, tomorrow())) day = 'Demain'
+  else if (isSameDay(d, addDays(today(), -1))) day = 'Hier'
+  else day = isSameYear(d, new Date())
+    ? format(d, 'd MMM', { locale: fr })
+    : format(d, 'd MMM yyyy', { locale: fr })
   return allDay ? day : `${day} ${format(d, 'HH:mm')}`
 }
 
