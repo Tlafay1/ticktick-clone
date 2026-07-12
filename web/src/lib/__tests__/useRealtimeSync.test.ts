@@ -9,7 +9,10 @@ vi.mock('vue', async (orig) => {
 
 // `location` est déjà défini par test-setup.ts (http://localhost)
 // Mock des tokens (access token requis pour l'URL WS)
-vi.mock('@/api/client', () => ({ tokens: { access: 'test-token' } }))
+vi.mock('@/api/client', () => ({
+  tokens: { access: 'test-token' },
+  serverBase: { get: () => '' },
+}))
 
 // Classe mock WebSocket constructible avec `new`
 class MockWebSocket {

@@ -20,7 +20,7 @@ import type {
   User,
   UserSettings,
 } from '@/types'
-import { http, qs, tokens } from './client'
+import { http, qs, tokens, apiUrl } from './client'
 
 export const authApi = {
   async register(email: string, password: string, displayName = '') {
@@ -82,7 +82,7 @@ export const tasksApi = {
   importFile: async (file: File, dedupe = false) => {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`/api/tasks/import/${dedupe ? '?dedupe=1' : ''}`, {
+    const res = await fetch(apiUrl(`/api/tasks/import/${dedupe ? '?dedupe=1' : ''}`), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: fd,
@@ -153,7 +153,7 @@ export const attachmentsApi = {
     const fd = new FormData()
     fd.append('task', String(taskId))
     fd.append('file', file)
-    const res = await fetch('/api/attachments/', {
+    const res = await fetch(apiUrl('/api/attachments/'), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: fd,

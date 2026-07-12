@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { authApi } from '@/api'
-import { ApiError } from '@/api/client'
+import { ApiError, serverBase } from '@/api/client'
 
 const router = useRouter()
 const mode = ref<'login' | 'register'>('login')
@@ -12,9 +12,17 @@ const displayName = ref('')
 const error = ref('')
 const busy = ref(false)
 
+// App embarquée (Capacitor/Electron packagé) : l'UI n'est pas servie par le
+// backend, il faut l'URL du serveur self-hosted. Ouvert par défaut si une
+// plateforme native est détectée sans serveur configuré.
+const isEmbedded = typeof window !== 'undefined' && ('Capacitor' in window || 'electronAPI' in window)
+const serverUrl = ref(serverBase.get())
+const showServer = ref(isEmbedded && !serverBase.get())
+
 async function submit() {
   error.value = ''
   busy.value = true
+  serverBase.set(serverUrl.value)
   try {
     if (mode.value === 'register') {
       await authApi.register(email.value, password.value, displayName.value)
@@ -52,6 +60,17 @@ async function submit() {
         placeholder="Nom affiché (optionnel)"
       />
 
+      <button type="button" class="server-toggle" @click="showServer = !showServer">
+        ⚙ Serveur{{ serverUrl ? ` : ${serverUrl}` : '' }}
+      </button>
+      <input
+        v-if="showServer"
+        v-model="serverUrl"
+        type="url"
+        placeholder="URL du serveur (ex. https://ticktick.mondomaine.fr)"
+        autocomplete="url"
+      />
+
       <p v-if="error" class="error">{{ error }}</p>
 
       <button class="btn btn-primary" type="submit" :disabled="busy">
@@ -70,6 +89,17 @@ async function submit() {
 </template>
 
 <style scoped>
+.server-toggle {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+.server-toggle:hover { color: var(--primary); }
+
 .login {
   display: flex;
   align-items: center;

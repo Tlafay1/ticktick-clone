@@ -55,3 +55,7 @@ desktop/dist-electron/
 
 # Logs de développement
 scripts/logs/
+# Générés par `npx cap sync` (copie de web/dist + plugins cordova)
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/android/capacitor-cordova-android-plugins/

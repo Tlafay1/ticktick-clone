@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TickTick Clone</string>
+    <string name="title_activity_main">TickTick Clone</string>
+    <string name="package_name">com.ticktick.clone</string>
+    <string name="custom_url_scheme">com.ticktick.clone</string>
+</resources>

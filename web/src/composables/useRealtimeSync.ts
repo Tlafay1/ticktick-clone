@@ -1,5 +1,5 @@
 import { onUnmounted } from 'vue'
-import { tokens } from '@/api/client'
+import { tokens, serverBase } from '@/api/client'
 import { useTaskStore } from '@/stores/tasks'
 
 type SyncMessage =
@@ -18,8 +18,11 @@ export function useRealtimeSync() {
     if (ws && ws.readyState <= WebSocket.OPEN) return
     if (!tokens.access) return
 
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    const url = `${proto}://${location.host}/ws/tasks/?token=${tokens.access}`
+    // Serveur configuré (app embarquée) sinon même origine (web).
+    const base = serverBase.get()
+    const host = base ? base.replace(/^https?:\/\//, '') : location.host
+    const secure = base ? base.startsWith('https') : location.protocol === 'https:'
+    const url = `${secure ? 'wss' : 'ws'}://${host}/ws/tasks/?token=${tokens.access}`
 
     ws = new WebSocket(url)
 
