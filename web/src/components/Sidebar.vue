@@ -169,12 +169,19 @@ function onProjectDragStart(e: DragEvent, p: Project) {
 }
 
 function onGroupDragOver(e: DragEvent, groupId: number) {
-  if (draggingProjectId.value === null) return
+  if (draggingProjectId.value === null && draggingGroupId.value === null) return
   e.preventDefault()
   groupDropOver.value = groupId
 }
 
 async function onGroupDrop(groupId: number) {
+  // Dossier déposé sur un dossier → réordonnancement.
+  if (draggingGroupId.value !== null) {
+    await reorderGroups(draggingGroupId.value, groupId)
+    draggingGroupId.value = null
+    groupDropOver.value = null
+    return
+  }
   const pid = draggingProjectId.value
   draggingProjectId.value = null
   groupDropOver.value = null
@@ -183,6 +190,25 @@ async function onGroupDrop(groupId: number) {
 }
 
 function onGroupDragLeave() { groupDropOver.value = null }
+
+// ── Réordonnancement des dossiers (drag d'un en-tête sur un autre) ─────────
+const draggingGroupId = ref<number | null>(null)
+
+function onGroupHeaderDragStart(g: ProjectGroup) {
+  draggingGroupId.value = g.id
+}
+
+async function reorderGroups(fromId: number, toId: number) {
+  if (fromId === toId) return
+  const list = [...projectStore.groups]
+  const fromIdx = list.findIndex(g => g.id === fromId)
+  const toIdx = list.findIndex(g => g.id === toId)
+  if (fromIdx < 0 || toIdx < 0) return
+  const [moved] = list.splice(fromIdx, 1)
+  list.splice(toIdx, 0, moved)
+  projectStore.groups = list.map((g, i) => ({ ...g, sort_order: (i + 1) * 1000 }))
+  await Promise.all(list.map((g, i) => projectsApi.updateGroup(g.id, { sort_order: (i + 1) * 1000 })))
+}
 
 // ── Tri des projets non groupés ─────────────────────────────────────────────
 
@@ -312,11 +338,14 @@ function cycleTheme() {
         <div
           class="nav-item group-item"
           :class="{ 'drop-target': groupDropOver === g.id }"
+          draggable="true"
           @click="toggleGroup(g.id)"
           @contextmenu.prevent="showGroupMenu($event, g)"
+          @dragstart="onGroupHeaderDragStart(g)"
           @dragover="onGroupDragOver($event, g.id)"
           @drop.prevent="onGroupDrop(g.id)"
           @dragleave="onGroupDragLeave"
+          @dragend="draggingGroupId = null; groupDropOver = null"
         >
           <span class="nav-icon chevron-icon" :class="{ open: !isGroupCollapsed(g.id) }"><Icon name="chevron-right" :size="12" /></span>
           <span class="nav-label">{{ g.name }}</span>
