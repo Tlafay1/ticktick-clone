@@ -252,6 +252,12 @@ async function dropTaskOnTag(e: DragEvent, tagId: number) {
 
 const showTagManager = ref(false)
 
+// Comme TickTick : le panneau des listes n'existe que dans le contexte Tâches.
+// Ailleurs (calendrier, habitudes, focus…), seul le rail reste sur desktop ;
+// le tiroir mobile, lui, sert partout de navigation.
+const TASK_PANEL_ROUTES = new Set(['smart-list', 'project', 'tag', 'task', 'kanban'])
+const isTaskContext = computed(() => TASK_PANEL_ROUTES.has(String(route.name)))
+
 const themeIcons: Record<string, string> = { auto: 'monitor', light: 'sun', dark: 'moon' }
 const themeOrder: Array<'auto' | 'light' | 'dark'> = ['auto', 'light', 'dark']
 
@@ -270,7 +276,7 @@ function cycleTheme() {
   <!-- Rail d'icônes (desktop uniquement, comme TickTick) -->
   <IconRail />
 
-  <aside class="sidebar" :class="{ open: sidebarOpen }">
+  <aside class="sidebar" :class="{ open: sidebarOpen, 'no-task-context': !isTaskContext }">
     <div class="sidebar-top">
       <div class="app-title">TickTick</div>
     </div>
@@ -566,6 +572,12 @@ function cycleTheme() {
 /* Hamburger + voile : masqués sur desktop, visibles en tiroir sur mobile. */
 .drawer-toggle { display: none; }
 .drawer-overlay { display: none; }
+
+/* Hors contexte Tâches, le panneau des listes disparaît sur desktop
+   (le tiroir mobile reste disponible partout). */
+@media (min-width: 769px) {
+  .sidebar.no-task-context { display: none; }
+}
 
 /* Entrées réservées au tiroir mobile (le rail les porte sur desktop). */
 .mobile-only { display: none !important; }
