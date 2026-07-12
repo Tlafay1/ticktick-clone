@@ -175,7 +175,83 @@ const regularRows = computed<TaskRowView[]>(() => {
   return rows
 })
 
+// ── Multi-sélection (Ctrl/Maj+clic) + actions groupées ──────────────────────
+const multiSel = ref<Set<number>>(new Set())
+const lastMultiId = ref<number | null>(null)
+const batchMoveOpen = ref(false)
+const batchPrioOpen = ref(false)
+
+function clearMulti() {
+  multiSel.value = new Set()
+  lastMultiId.value = null
+  batchMoveOpen.value = false
+  batchPrioOpen.value = false
+}
+
+function onMulti(t: Task, e: MouseEvent) {
+  const next = new Set(multiSel.value)
+  if (e.shiftKey && lastMultiId.value !== null) {
+    // Étend la sélection entre le dernier clic et celui-ci (ordre affiché).
+    const flat = regularRows.value.map(r => r.task.id)
+    const a = flat.indexOf(lastMultiId.value)
+    const b = flat.indexOf(t.id)
+    if (a >= 0 && b >= 0) {
+      for (let i = Math.min(a, b); i <= Math.max(a, b); i++) next.add(flat[i])
+    } else {
+      next.add(t.id)
+    }
+  } else if (next.has(t.id)) {
+    next.delete(t.id)
+  } else {
+    next.add(t.id)
+  }
+  lastMultiId.value = t.id
+  multiSel.value = next
+  taskStore.select(null)
+}
+
+async function batchUpdate(patch: Partial<Task>) {
+  const ids = [...multiSel.value]
+  await Promise.all(ids.map(id => tasksApi.update(id, patch)))
+  clearMulti()
+  await loadView()
+}
+
+function batchSetDay(offset: number) {
+  const d = new Date()
+  d.setDate(d.getDate() + offset)
+  d.setHours(0, 0, 0, 0)
+  return batchUpdate({ due_date: d.toISOString(), is_all_day: true })
+}
+
+async function batchComplete() {
+  const ids = [...multiSel.value]
+  await Promise.all(ids.map(id => tasksApi.complete(id)))
+  clearMulti()
+  await loadView()
+}
+
+async function batchDelete() {
+  if (!confirm(`Supprimer ${multiSel.value.size} tâche(s) ? (corbeille)`)) return
+  const ids = [...multiSel.value]
+  await Promise.all(ids.map(id => tasksApi.remove(id)))
+  clearMulti()
+  await loadView()
+}
+
+const BATCH_PRIORITIES = [
+  { value: 5, label: 'Haute' },
+  { value: 3, label: 'Moyenne' },
+  { value: 1, label: 'Basse' },
+  { value: 0, label: 'Aucune' },
+]
+
+function onEscapeMulti(e: KeyboardEvent) {
+  if (e.key === 'Escape' && multiSel.value.size) clearMulti()
+}
+
 async function loadView() {
+  clearMulti()
   loadSortPref()
   if (route.name === 'task') {
     // Deep link : charge la tâche dans le contexte de sa liste puis la sélectionne.
@@ -368,11 +444,13 @@ onMounted(async () => {
   startNotifications()
   window.addEventListener('online', onOnline)
   window.addEventListener('offline', onOffline)
+  window.addEventListener('keydown', onEscapeMulti)
 })
 
 onUnmounted(() => {
   window.removeEventListener('online', onOnline)
   window.removeEventListener('offline', onOffline)
+  window.removeEventListener('keydown', onEscapeMulti)
 })
 
 watch(() => route.fullPath, loadView)
@@ -469,10 +547,12 @@ watch(() => route.fullPath, loadView)
             <TaskItem
               :task="row.task"
               :selected="taskStore.selectedId === row.task.id"
+              :multi-selected="multiSel.has(row.task.id)"
               :depth="row.depth"
               :has-children="row.hasChildren"
               :collapsed="collapsedParents.has(row.task.id)"
               @toggle-collapse="toggleCollapse(row.task.id)"
+              @multi="onMulti(row.task, $event)"
             />
           </div>
 
@@ -505,6 +585,32 @@ watch(() => route.fullPath, loadView)
         </template>
 
         <div v-if="taskStore.loading" class="loading">Chargement…</div>
+      </div>
+
+      <!-- Barre d'actions groupées (multi-sélection) -->
+      <div v-if="multiSel.size" class="batch-bar">
+        <span class="batch-count">{{ multiSel.size }} sélectionnée{{ multiSel.size > 1 ? 's' : '' }}</span>
+        <button class="batch-btn" @click="batchSetDay(0)">Aujourd'hui</button>
+        <button class="batch-btn" @click="batchSetDay(1)">Demain</button>
+        <div class="batch-menu-wrap">
+          <button class="batch-btn" @click="batchPrioOpen = !batchPrioOpen; batchMoveOpen = false">Priorité ▾</button>
+          <div v-if="batchPrioOpen" class="batch-pop">
+            <button v-for="p in BATCH_PRIORITIES" :key="p.value" class="menu-item" @click="batchUpdate({ priority: p.value })">{{ p.label }}</button>
+          </div>
+        </div>
+        <div class="batch-menu-wrap">
+          <button class="batch-btn" @click="batchMoveOpen = !batchMoveOpen; batchPrioOpen = false">Déplacer ▾</button>
+          <div v-if="batchMoveOpen" class="batch-pop">
+            <button
+              v-for="p in projectStore.projects.filter(p => !p.archived && !p.is_smart)"
+              :key="p.id" class="menu-item"
+              @click="batchUpdate({ project: p.id })"
+            >{{ p.icon ? p.icon + ' ' : '' }}{{ p.name }}</button>
+          </div>
+        </div>
+        <button class="batch-btn" @click="batchComplete">Terminer</button>
+        <button class="batch-btn danger-text" @click="batchDelete">Supprimer</button>
+        <button class="icon-btn batch-close" title="Annuler la sélection (Échap)" @click="clearMulti">✕</button>
       </div>
     </main>
 
@@ -664,6 +770,57 @@ watch(() => route.fullPath, loadView)
   text-align: center;
   color: var(--text-muted);
 }
+
+/* Barre d'actions groupées */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+.batch-count { font-size: 12.5px; color: var(--text-secondary); margin-right: 4px; }
+.batch-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.batch-btn:hover { border-color: var(--primary); color: var(--primary); }
+.batch-btn.danger-text:hover { border-color: var(--danger); }
+.batch-close { margin-left: auto; }
+.batch-menu-wrap { position: relative; }
+.batch-pop {
+  position: absolute;
+  bottom: 34px;
+  left: 0;
+  z-index: 50;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  min-width: 150px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.batch-pop .menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+  cursor: pointer;
+}
+.batch-pop .menu-item:hover { background: var(--bg-hover); }
 
 /* Drag & drop */
 .drag-wrapper { transition: opacity 0.15s; }

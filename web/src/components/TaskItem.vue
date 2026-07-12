@@ -10,11 +10,21 @@ import TaskContextMenu from './TaskContextMenu.vue'
 const props = defineProps<{
   task: Task
   selected?: boolean
+  multiSelected?: boolean
   depth?: number
   hasChildren?: boolean
   collapsed?: boolean
 }>()
-const emit = defineEmits<{ 'toggle-collapse': [] }>()
+const emit = defineEmits<{ 'toggle-collapse': []; multi: [ev: MouseEvent] }>()
+
+// Ctrl/Cmd/Maj+clic = sélection multiple (gérée par la vue parente)
+function onRowClick(e: MouseEvent) {
+  if (e.ctrlKey || e.metaKey || e.shiftKey) {
+    emit('multi', e)
+    return
+  }
+  store.select(props.task.id)
+}
 const store = useTaskStore()
 const tagStore = useTagStore()
 const projectStore = useProjectStore()
@@ -65,9 +75,9 @@ function openContext(e: MouseEvent) {
 <template>
   <div
     class="task-row"
-    :class="{ selected, completed: isCompleted, 'wont-do': isWontDo }"
+    :class="{ selected, 'multi-selected': multiSelected, completed: isCompleted, 'wont-do': isWontDo }"
     :style="depth ? `padding-left: ${14 + depth * 22}px` : ''"
-    @click="store.select(task.id)"
+    @click="onRowClick"
     @contextmenu.prevent="openContext"
   >
     <button
@@ -156,6 +166,7 @@ function openContext(e: MouseEvent) {
 .collapse-btn.collapsed { transform: rotate(0deg); }
 .collapse-btn:hover { color: var(--text); }
 .task-row.selected { background: var(--bg-hover); box-shadow: inset 3px 0 0 var(--primary); }
+.task-row.multi-selected { background: var(--bg-active); }
 .task-row.completed .task-title { text-decoration: line-through; color: var(--text-muted); }
 .task-row.wont-do .task-title { text-decoration: line-through; color: var(--text-muted); opacity: 0.6; }
 
