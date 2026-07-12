@@ -11,6 +11,7 @@ import TaskItem from '@/components/TaskItem.vue'
 import QuickAdd from '@/components/QuickAdd.vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 import SearchBar from '@/components/SearchBar.vue'
+import Icon from '@/components/Icon.vue'
 import { tasksApi } from '@/api'
 import { useDragSort } from '@/composables/useDragSort'
 import { tasksToCSV, tasksToJSON, downloadFile, parseJSON } from '@/lib/exportImport'
@@ -112,6 +113,50 @@ const topRegular = computed(() =>
   )
 )
 
+// ── Tri de la vue (⇅, comme TickTick) ───────────────────────────────────────
+type SortBy = 'manual' | 'due_date' | 'title' | 'priority'
+const SORT_OPTIONS: Array<{ value: SortBy; label: string }> = [
+  { value: 'manual', label: 'Tri manuel' },
+  { value: 'due_date', label: 'Date' },
+  { value: 'title', label: 'Titre' },
+  { value: 'priority', label: 'Priorité' },
+]
+const sortBy = ref<SortBy>('manual')
+const sortMenuOpen = ref(false)
+
+const viewKey = computed(() => String(route.fullPath))
+
+function loadSortPref() {
+  try {
+    sortBy.value = (localStorage.getItem(`tt-sort:${viewKey.value}`) as SortBy) || 'manual'
+  } catch { sortBy.value = 'manual' }
+}
+
+function setSort(v: SortBy) {
+  sortBy.value = v
+  sortMenuOpen.value = false
+  try { localStorage.setItem(`tt-sort:${viewKey.value}`, v) } catch { /* stockage indisponible */ }
+}
+
+const sortedTop = computed(() => {
+  const tops = [...topRegular.value]
+  switch (sortBy.value) {
+    case 'due_date':
+      return tops.sort((a, b) => {
+        if (!a.due_date && !b.due_date) return 0
+        if (!a.due_date) return 1
+        if (!b.due_date) return -1
+        return a.due_date.localeCompare(b.due_date)
+      })
+    case 'title':
+      return tops.sort((a, b) => a.title.localeCompare(b.title, 'fr'))
+    case 'priority':
+      return tops.sort((a, b) => b.priority - a.priority)
+    default:
+      return tops
+  }
+})
+
 interface TaskRowView { task: Task; depth: number; hasChildren: boolean; topIdx: number }
 
 const regularRows = computed<TaskRowView[]>(() => {
@@ -126,11 +171,12 @@ const regularRows = computed<TaskRowView[]>(() => {
       for (const k of kids) add(k, depth + 1, topIdx)
     }
   }
-  topRegular.value.forEach((t: Task, i: number) => add(t, 0, i))
+  sortedTop.value.forEach((t: Task, i: number) => add(t, 0, i))
   return rows
 })
 
 async function loadView() {
+  loadSortPref()
   if (route.name === 'task') {
     // Deep link : charge la tâche dans le contexte de sa liste puis la sélectionne.
     const tid = Number(route.params.id)
@@ -348,6 +394,16 @@ watch(() => route.fullPath, loadView)
             title="Vue Kanban"
             @click="router.push(`/project/${route.params.id}/kanban`)"
           >⊞ Kanban</button>
+          <div v-if="!isTrash && !isCompleted" class="header-menu-wrap">
+            <button class="icon-btn" title="Trier" @click="sortMenuOpen = !sortMenuOpen"><Icon name="sort" :size="15" /></button>
+            <div v-if="sortMenuOpen" class="header-dropdown" @mouseleave="sortMenuOpen = false">
+              <button
+                v-for="opt in SORT_OPTIONS" :key="opt.value"
+                class="menu-item" :class="{ 'sort-active': sortBy === opt.value }"
+                @click="setSort(opt.value)"
+              >{{ opt.label }}<span v-if="sortBy === opt.value" class="sort-check">✓</span></button>
+            </div>
+          </div>
           <div v-if="!isTrash" class="header-menu-wrap">
             <button class="icon-btn" title="Plus d'options" @click="toggleHeaderMenu">⋯</button>
             <div v-if="headerMenuOpen" class="header-dropdown" @mouseleave="closeHeaderMenu">
@@ -404,10 +460,10 @@ watch(() => route.fullPath, loadView)
             :key="row.task.id"
             class="drag-wrapper"
             :class="{ 'drag-over': row.depth === 0 && overIdx === row.topIdx }"
-            :draggable="row.depth === 0"
-            @dragstart="(e) => { if (row.depth === 0) { onDragStart(row.topIdx); e.dataTransfer?.setData('task-id', String(row.task.id)) } }"
-            @dragover="row.depth === 0 && onDragOver($event, row.topIdx)"
-            @drop="row.depth === 0 && onDrop(row.topIdx)"
+            :draggable="row.depth === 0 && sortBy === 'manual'"
+            @dragstart="(e) => { if (row.depth === 0 && sortBy === 'manual') { onDragStart(row.topIdx); e.dataTransfer?.setData('task-id', String(row.task.id)) } }"
+            @dragover="row.depth === 0 && sortBy === 'manual' && onDragOver($event, row.topIdx)"
+            @drop="row.depth === 0 && sortBy === 'manual' && onDrop(row.topIdx)"
             @dragend="onDragEnd"
           >
             <TaskItem
@@ -541,6 +597,8 @@ watch(() => route.fullPath, loadView)
   cursor: pointer;
 }
 .header-dropdown .menu-item:hover { background: var(--bg-hover); }
+.header-dropdown .menu-item.sort-active { color: var(--primary); }
+.sort-check { float: right; margin-left: 12px; }
 
 .task-list-scroll {
   flex: 1;
