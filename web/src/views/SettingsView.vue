@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 import { onMounted, ref } from 'vue'
 import { enablePushNotifications } from '@/composables/usePushNotifications'
 import { pushToast } from '@/composables/useToast'
-import { apiKeysApi, webhooksApi, type ApiKeyInfo, type Webhook } from '@/api'
+import { apiKeysApi, webhooksApi, calendarsApi, type ApiKeyInfo, type Webhook, type CalendarSubscription } from '@/api'
 
 const userStore = useUserStore()
 const tagStore = useTagStore()
@@ -155,12 +155,50 @@ async function pingWebhook(id: number) {
   pushToast('Ping envoyé.', 'success')
 }
 
+// --- Calendriers abonnés (ICS read-only) ---
+const calSubs = ref<CalendarSubscription[]>([])
+const newCalName = ref('')
+const newCalUrl = ref('')
+
+async function loadCalSubs() {
+  calSubs.value = await calendarsApi.list()
+}
+
+async function addCalSub() {
+  const name = newCalName.value.trim()
+  const url = newCalUrl.value.trim()
+  if (!name || !url) return
+  const sub = await calendarsApi.create({ name, url })
+  calSubs.value.push(sub)
+  newCalName.value = ''
+  newCalUrl.value = ''
+  pushToast('Abonnement ajouté — import en cours…', 'success')
+}
+
+async function toggleCalSub(sub: CalendarSubscription) {
+  const updated = await calendarsApi.update(sub.id, { is_visible: !sub.is_visible })
+  Object.assign(sub, updated)
+}
+
+async function refreshCalSub(id: number) {
+  const { imported } = await calendarsApi.refresh(id)
+  pushToast(`${imported} événement${imported > 1 ? 's' : ''} importé${imported > 1 ? 's' : ''}.`, 'success')
+  await loadCalSubs()
+}
+
+async function removeCalSub(id: number) {
+  if (!confirm('Supprimer cet abonnement et ses événements ?')) return
+  await calendarsApi.remove(id)
+  calSubs.value = calSubs.value.filter(s => s.id !== id)
+}
+
 onMounted(async () => {
   if (!userStore.user) userStore.load()
   if (!tagStore.tags.length) await tagStore.load()
   if (!projectStore.projects.length) await projectStore.load()
   await loadApiKeys()
   await loadWebhooks()
+  await loadCalSubs()
 })
 </script>
 
@@ -456,6 +494,35 @@ onMounted(async () => {
             {{ ev }}
           </label>
           <span class="section-hint" style="margin:0">Aucun coché = tous.</span>
+        </div>
+      </section>
+
+      <!-- Calendriers abonnés (ICS, lecture seule) -->
+      <section class="settings-section">
+        <h2 class="section-title">Calendriers abonnés (ICS)</h2>
+        <p class="section-hint">Les événements d'une URL .ics s'affichent en lecture seule dans le calendrier. Réimport automatique toutes les heures.</p>
+
+        <div v-for="sub in calSubs" :key="sub.id" class="setting-row">
+          <div>
+            <div class="setting-label">{{ sub.name }}</div>
+            <div class="key-meta">
+              {{ sub.url }}
+              <span v-if="sub.last_synced_at"> · synchronisé le {{ new Date(sub.last_synced_at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
+              <span v-if="!sub.is_visible"> · masqué</span>
+            </div>
+          </div>
+          <div class="webhook-actions">
+            <button class="btn btn-ghost" style="font-size:12px" @click="refreshCalSub(sub.id)">↻ Réimporter</button>
+            <button class="btn btn-ghost" style="font-size:12px" @click="toggleCalSub(sub)">{{ sub.is_visible ? 'Masquer' : 'Afficher' }}</button>
+            <button class="btn btn-ghost danger-btn" @click="removeCalSub(sub.id)">Supprimer</button>
+          </div>
+        </div>
+        <div v-if="!calSubs.length" class="empty-hint">Aucun calendrier abonné.</div>
+
+        <div class="new-key-form">
+          <input v-model="newCalName" class="setting-input" style="max-width:160px" placeholder="Nom" @keydown.enter="addCalSub" />
+          <input v-model="newCalUrl" class="setting-input" placeholder="https://…/calendrier.ics" @keydown.enter="addCalSub" />
+          <button class="btn btn-primary" @click="addCalSub">Abonner</button>
         </div>
       </section>
 

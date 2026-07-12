@@ -144,14 +144,14 @@ class TestM04IcsSubscription:
 
     class _Resp:
         status_code = 200
-        text = ""
+        content = b""
 
         def raise_for_status(self):
             pass
 
     def _mock_feed(self, monkeypatch):
         resp = self._Resp()
-        resp.text = self.ICS
+        resp.content = self.ICS.encode()
         monkeypatch.setattr("requests.get", lambda url, timeout: resp)
 
     def test_subscribe_ics_url_parses_events(self, api, monkeypatch):

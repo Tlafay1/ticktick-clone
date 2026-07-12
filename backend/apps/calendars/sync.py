@@ -93,7 +93,9 @@ def refresh_subscription(subscription):
     try:
         resp = requests.get(subscription.url, timeout=15)
         resp.raise_for_status()
-        occurrences = parse_ics(resp.text)
+        # Octets bruts : RFC 5545 impose UTF-8, mais `resp.text` retombe sur
+        # latin-1 quand le serveur n'annonce pas de charset (mojibake).
+        occurrences = parse_ics(resp.content)
     except Exception as exc:  # réseau/parse : on garde les anciens événements
         logger.warning("Refresh ICS échoué (%s) : %s", subscription.url[:64], exc)
         return 0

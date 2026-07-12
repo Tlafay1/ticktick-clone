@@ -68,7 +68,7 @@ def test_parse_ics_ignores_events_outside_window():
 
 class _FakeResp:
     status_code = 200
-    text = ICS_SAMPLE
+    content = ICS_SAMPLE.encode()
 
     def raise_for_status(self):
         pass

@@ -200,6 +200,42 @@ export const apiKeysApi = {
   remove: (id: number) => http.delete(`/api/api-keys/${id}/`),
 }
 
+export interface CalendarSubscription {
+  id: number
+  name: string
+  url: string
+  color: string
+  is_visible: boolean
+  created_at: string
+  last_synced_at: string | null
+}
+
+export interface CalendarEvent {
+  id: number
+  subscription: number
+  calendar_name: string
+  color: string
+  uid: string
+  title: string
+  location: string
+  start: string
+  end: string | null
+  is_all_day: boolean
+}
+
+export const calendarsApi = {
+  list: () => http.get<CalendarSubscription[]>('/api/calendar-subscriptions/'),
+  create: (data: { name: string; url: string; color?: string }) =>
+    http.post<CalendarSubscription>('/api/calendar-subscriptions/', data),
+  update: (id: number, data: Partial<CalendarSubscription>) =>
+    http.patch<CalendarSubscription>(`/api/calendar-subscriptions/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/calendar-subscriptions/${id}/`),
+  refresh: (id: number) =>
+    http.post<{ imported: number }>(`/api/calendar-subscriptions/${id}/refresh/`, {}),
+  events: (params: { start?: string; end?: string } = {}) =>
+    http.get<CalendarEvent[]>(`/api/calendar-events/${qs(params)}`),
+}
+
 export interface Webhook {
   id: number
   url: string

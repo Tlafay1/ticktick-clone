@@ -3,7 +3,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import Sidebar from '@/components/Sidebar.vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 import TaskContextMenu from '@/components/TaskContextMenu.vue'
-import { tasksApi } from '@/api'
+import { tasksApi, calendarsApi, type CalendarEvent } from '@/api'
 import { useTaskStore } from '@/stores/tasks'
 import { useProjectStore } from '@/stores/projects'
 import { useTagStore } from '@/stores/tags'
@@ -49,13 +49,27 @@ async function loadTasks() {
       ? endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
       : endOfMonth(pivot.value)
 
-  allTasks.value = await tasksApi.list({
-    due_after: startOfDay(addDays(start, -1)).toISOString(),
-    due_before: endOfWeek(end, { weekStartsOn: weekStartsOn.value }).toISOString(),
-    status: 0,
-  })
+  const rangeStart = startOfDay(addDays(start, -1)).toISOString()
+  const rangeEnd = endOfWeek(end, { weekStartsOn: weekStartsOn.value }).toISOString()
+  ;[allTasks.value, icsEvents.value] = await Promise.all([
+    tasksApi.list({ due_after: rangeStart, due_before: rangeEnd, status: 0 }),
+    calendarsApi.events({ start: rangeStart, end: rangeEnd }).catch(() => []),
+  ])
   taskStore.tasks = allTasks.value
   loading.value = false
+}
+
+// ── Événements ICS (lecture seule) ──────────────────────────────────────────
+const icsEvents = ref<CalendarEvent[]>([])
+
+function icsOnDay(day: Date, allDay: boolean) {
+  return icsEvents.value.filter(
+    (e) => e.is_all_day === allDay && isSameDay(parseISO(e.start), day)
+  )
+}
+
+function icsEventHour(e: CalendarEvent) {
+  return new Date(e.start).getHours()
 }
 
 onMounted(async () => {
@@ -478,6 +492,15 @@ async function onCtxClose() {
               @click.stop="openTask(t)"
               @contextmenu.stop.prevent="onTaskCtx($event, t)"
             >{{ t.title }}</div>
+            <!-- Événements ICS journée entière (lecture seule) -->
+            <div
+              v-for="e in icsOnDay(day, true)"
+              :key="`ics-${e.id}`"
+              class="cal-task all-day ics-event"
+              :style="e.color ? `border-left-color: ${e.color}` : ''"
+              :title="`${e.calendar_name}${e.location ? ' · ' + e.location : ''}`"
+              @click.stop
+            >{{ e.title }}</div>
           </div>
         </div>
 
@@ -530,6 +553,15 @@ async function onCtxClose() {
                   @click.stop="openTask(t)"
                   @contextmenu.stop.prevent="onTaskCtx($event, t)"
                 >{{ t.title }}</div>
+                <!-- Événements ICS horaires (lecture seule) -->
+                <div
+                  v-for="e in icsOnDay(day, false).filter(e => icsEventHour(e) === h)"
+                  :key="`ics-${e.id}`"
+                  class="cal-task timed ics-event"
+                  :style="e.color ? `border-left-color: ${e.color}` : ''"
+                  :title="`${e.calendar_name}${e.location ? ' · ' + e.location : ''}`"
+                  @click.stop
+                >{{ format(parseISO(e.start), 'HH:mm') }} {{ e.title }}</div>
               </div>
             </div>
           </div>
@@ -564,6 +596,14 @@ async function onCtxClose() {
                 @click.stop="openTask(t)"
                 @contextmenu.stop.prevent="onTaskCtx($event, t)"
               >{{ t.title }}</div>
+              <div
+                v-for="e in [...icsOnDay(day, true), ...icsOnDay(day, false)].slice(0, 2)"
+                :key="`ics-${e.id}`"
+                class="month-task ics-event"
+                :style="e.color ? `background: ${e.color}22; color: ${e.color}` : ''"
+                :title="e.calendar_name"
+                @click.stop
+              >{{ e.title }}</div>
               <div v-if="tasksOnDay(day).length > 3" class="month-more">+{{ tasksOnDay(day).length - 3 }}</div>
             </div>
           </div>
@@ -590,6 +630,16 @@ async function onCtxClose() {
             >
               <span class="agenda-time" v-if="!t.is_all_day && t.due_date">{{ format(parseISO(t.due_date), 'HH:mm') }}</span>
               <span class="agenda-title">{{ t.title }}</span>
+            </div>
+            <div
+              v-for="e in [...icsOnDay(date, true), ...icsOnDay(date, false)]"
+              :key="`ics-${e.id}`"
+              class="agenda-task ics-event"
+              :style="e.color ? `border-left-color: ${e.color}` : ''"
+              :title="e.calendar_name"
+            >
+              <span class="agenda-time" v-if="!e.is_all_day">{{ format(parseISO(e.start), 'HH:mm') }}</span>
+              <span class="agenda-title">{{ e.title }}</span>
             </div>
             <button class="agenda-add" @click="startCreate(date)">＋ Ajouter</button>
           </div>
@@ -789,6 +839,13 @@ async function onCtxClose() {
 
 /* Mode classique : plus d'espace, police plus grande */
 .cal-classic .cal-task { font-size: 12.5px; padding: 3px 6px; }
+
+/* Événements ICS : lecture seule, teinte douce distincte des tâches */
+.ics-event {
+  cursor: default;
+  opacity: 0.85;
+  font-style: italic;
+}
 .cal-classic .time-gutter { font-size: 11px; }
 /* Mode moderne : compact */
 .cal-modern .cal-task { font-size: 11px; }
