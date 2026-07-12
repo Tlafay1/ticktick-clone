@@ -288,7 +288,7 @@ function closeColMenu() { colMenu.value = null }
         </div>
 
         <!-- Panneau de détail -->
-        <TaskDetail v-if="taskStore.selectedId" class="kanban-detail" />
+        <TaskDetail v-if="taskStore.selected()" class="kanban-detail" />
       </div>
     </div>
 

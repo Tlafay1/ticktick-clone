@@ -314,7 +314,7 @@ async function onOnline() {
 function onOffline() { isOffline.value = true }
 
 onMounted(async () => {
-  await userStore.load()
+  if (!userStore.user) await userStore.load()
   await projectStore.load()
   await tagStore.load()
   await loadView()

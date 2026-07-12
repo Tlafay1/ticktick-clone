@@ -51,8 +51,10 @@ async function loadTasks() {
 
   const rangeStart = startOfDay(addDays(start, -1)).toISOString()
   const rangeEnd = endOfWeek(end, { weekStartsOn: weekStartsOn.value }).toISOString()
+  // scheduled_* = start_date si défini, sinon due_date : sans quoi une tâche
+  // planifiée par drag (start_date seul) disparaissait au rechargement.
   ;[allTasks.value, icsEvents.value] = await Promise.all([
-    tasksApi.list({ due_after: rangeStart, due_before: rangeEnd, status: 0 }),
+    tasksApi.list({ scheduled_after: rangeStart, scheduled_before: rangeEnd, status: 0 }),
     calendarsApi.events({ start: rangeStart, end: rangeEnd }).catch(() => []),
   ])
   taskStore.tasks = allTasks.value
@@ -748,7 +750,7 @@ async function onCtxClose() {
       </div>
     </div>
 
-    <TaskDetail v-if="taskStore.selectedId" class="cal-detail" />
+    <TaskDetail v-if="taskStore.selected()" class="cal-detail" />
     <TaskContextMenu
       v-if="contextMenu"
       :task="contextMenu.task"

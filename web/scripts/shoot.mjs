@@ -21,7 +21,7 @@ const page = await ctx.newPage()
 await page.addInitScript(([a, r, theme]) => {
   localStorage.setItem('tt.access', a)
   localStorage.setItem('tt.refresh', r)
-  localStorage.setItem('tt.theme', theme)
+  localStorage.setItem('tt-theme', theme)
 }, [access, refresh, THEME])
 
 const views = [
