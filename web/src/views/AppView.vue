@@ -78,9 +78,57 @@ const listBgStyle = computed(() => {
 const pinnedTasks = computed(() =>
   taskStore.tasks.filter((t: Task) => t.is_pinned && t.status === 0)
 )
-const regularTasks = computed(() =>
-  taskStore.tasks.filter((t: Task) => !t.is_pinned || t.status !== 0)
+
+// ----- Imbrication des sous-tâches (fidèle TickTick) -----
+// Les enfants s'affichent indentés sous leur parent, repliables au chevron.
+const collapsedParents = ref<Set<number>>(new Set())
+function toggleCollapse(id: number) {
+  const next = new Set(collapsedParents.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  collapsedParents.value = next
+}
+
+const childrenByParent = computed(() => {
+  const m = new Map<number, Task[]>()
+  for (const t of taskStore.tasks) {
+    if (t.parent != null) {
+      const arr = m.get(t.parent) ?? []
+      arr.push(t)
+      m.set(t.parent, arr)
+    }
+  }
+  return m
+})
+
+const idsInList = computed(() => new Set(taskStore.tasks.map((t: Task) => t.id)))
+
+// Premier niveau = sans parent, ou parent absent de la vue courante
+// (ex. sous-tâche datée seule dans « Aujourd'hui », comme TickTick).
+const topRegular = computed(() =>
+  taskStore.tasks.filter((t: Task) =>
+    (!t.is_pinned || t.status !== 0)
+    && (t.parent == null || !idsInList.value.has(t.parent))
+  )
 )
+
+interface TaskRowView { task: Task; depth: number; hasChildren: boolean; topIdx: number }
+
+const regularRows = computed<TaskRowView[]>(() => {
+  const rows: TaskRowView[] = []
+  const seen = new Set<number>(pinnedTasks.value.map((t: Task) => t.id))
+  const add = (t: Task, depth: number, topIdx: number) => {
+    if (seen.has(t.id)) return
+    seen.add(t.id)
+    const kids = childrenByParent.value.get(t.id) ?? []
+    rows.push({ task: t, depth, hasChildren: kids.length > 0, topIdx })
+    if (!collapsedParents.value.has(t.id)) {
+      for (const k of kids) add(k, depth + 1, topIdx)
+    }
+  }
+  topRegular.value.forEach((t: Task, i: number) => add(t, 0, i))
+  return rows
+})
 
 async function loadView() {
   if (route.name === 'task') {
@@ -142,17 +190,29 @@ const SORT_STEP = 1000
 
 const { overIdx, onDragStart, onDragOver, onDrop, onDragEnd } = useDragSort(
   async (from, to) => {
-    const list = taskStore.tasks
-    if (from < 0 || to < 0 || from >= list.length || to >= list.length) return
+    // from/to = index parmi les tâches de PREMIER NIVEAU (les enfants suivent
+    // leur parent). Corrige aussi l'ancien décalage d'index avec les épinglées.
+    const tops = [...topRegular.value]
+    if (from < 0 || to < 0 || from >= tops.length || to >= tops.length) return
+    const [moved] = tops.splice(from, 1)
+    tops.splice(to, 0, moved)
 
-    // Calcul du nouveau sort_order : se glisse entre les voisins
-    const sorted = [...list]
-    const [moved] = sorted.splice(from, 1)
-    sorted.splice(to, 0, moved)
+    // Réaplatit : épinglées d'abord, puis chaque premier niveau suivi de ses
+    // descendants ; le reliquat (ex. enfants d'épinglées) conserve sa place.
+    const flat: Task[] = []
+    const seen = new Set<number>()
+    const push = (t: Task) => {
+      if (seen.has(t.id)) return
+      seen.add(t.id)
+      flat.push(t)
+      for (const k of childrenByParent.value.get(t.id) ?? []) push(k)
+    }
+    for (const p of pinnedTasks.value) push(p)
+    for (const t of tops) push(t)
+    for (const t of taskStore.tasks) push(t)
 
-    // Assigner sort_order espacés
-    const updates = sorted.map((t, i) => ({ id: t.id, sort_order: (i + 1) * SORT_STEP }))
-    taskStore.tasks = sorted.map((t, i) => ({ ...t, sort_order: (i + 1) * SORT_STEP }))
+    const updates = flat.map((t, i) => ({ id: t.id, sort_order: (i + 1) * SORT_STEP }))
+    taskStore.tasks = flat.map((t, i) => ({ ...t, sort_order: (i + 1) * SORT_STEP }))
     await Promise.all(updates.map(({ id, sort_order }) => tasksApi.update(id, { sort_order })))
   }
 )
@@ -312,21 +372,25 @@ watch(() => route.fullPath, loadView)
             :selected="taskStore.selectedId === task.id"
           />
 
-          <div v-if="pinnedTasks.length && regularTasks.length" class="group-label">Tâches</div>
+          <div v-if="pinnedTasks.length && regularRows.length" class="group-label">Tâches</div>
           <div
-            v-for="(task, idx) in regularTasks"
-            :key="task.id"
+            v-for="row in regularRows"
+            :key="row.task.id"
             class="drag-wrapper"
-            :class="{ 'drag-over': overIdx === (pinnedTasks.length + idx) }"
-            draggable="true"
-            @dragstart="(e) => { onDragStart(pinnedTasks.length + idx); e.dataTransfer?.setData('task-id', String(task.id)) }"
-            @dragover="onDragOver($event, pinnedTasks.length + idx)"
-            @drop="onDrop(pinnedTasks.length + idx)"
+            :class="{ 'drag-over': row.depth === 0 && overIdx === row.topIdx }"
+            :draggable="row.depth === 0"
+            @dragstart="(e) => { if (row.depth === 0) { onDragStart(row.topIdx); e.dataTransfer?.setData('task-id', String(row.task.id)) } }"
+            @dragover="row.depth === 0 && onDragOver($event, row.topIdx)"
+            @drop="row.depth === 0 && onDrop(row.topIdx)"
             @dragend="onDragEnd"
           >
             <TaskItem
-              :task="task"
-              :selected="taskStore.selectedId === task.id"
+              :task="row.task"
+              :selected="taskStore.selectedId === row.task.id"
+              :depth="row.depth"
+              :has-children="row.hasChildren"
+              :collapsed="collapsedParents.has(row.task.id)"
+              @toggle-collapse="toggleCollapse(row.task.id)"
             />
           </div>
 

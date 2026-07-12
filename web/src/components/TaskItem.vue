@@ -7,7 +7,14 @@ import { useTagStore } from '@/stores/tags'
 import { useProjectStore } from '@/stores/projects'
 import TaskContextMenu from './TaskContextMenu.vue'
 
-const props = defineProps<{ task: Task; selected?: boolean }>()
+const props = defineProps<{
+  task: Task
+  selected?: boolean
+  depth?: number
+  hasChildren?: boolean
+  collapsed?: boolean
+}>()
+const emit = defineEmits<{ 'toggle-collapse': [] }>()
 const store = useTaskStore()
 const tagStore = useTagStore()
 const projectStore = useProjectStore()
@@ -59,9 +66,19 @@ function openContext(e: MouseEvent) {
   <div
     class="task-row"
     :class="{ selected, completed: isCompleted, 'wont-do': isWontDo }"
+    :style="depth ? `padding-left: ${14 + depth * 22}px` : ''"
     @click="store.select(task.id)"
     @contextmenu.prevent="openContext"
   >
+    <button
+      v-if="hasChildren"
+      class="collapse-btn"
+      :class="{ collapsed }"
+      :title="collapsed ? 'Déplier' : 'Replier'"
+      @click.stop="emit('toggle-collapse')"
+    >
+      <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M2 1L6 4L2 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
     <button
       class="task-checkbox"
       :class="[priorityClass, { checked: isCompleted, wontdo: isWontDo }]"
@@ -119,6 +136,25 @@ function openContext(e: MouseEvent) {
   margin: 1px 0;
 }
 .task-row:hover { background: var(--bg-hover); }
+
+.collapse-btn {
+  width: 16px;
+  height: 16px;
+  margin-left: -6px;
+  margin-right: -4px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  transform: rotate(90deg);
+  transition: transform 0.15s;
+}
+.collapse-btn.collapsed { transform: rotate(0deg); }
+.collapse-btn:hover { color: var(--text); }
 .task-row.selected { background: var(--bg-hover); box-shadow: inset 3px 0 0 var(--primary); }
 .task-row.completed .task-title { text-decoration: line-through; color: var(--text-muted); }
 .task-row.wont-do .task-title { text-decoration: line-through; color: var(--text-muted); opacity: 0.6; }
