@@ -70,6 +70,12 @@ const userProjects = computed(() =>
   projectStore.projects.filter((p) => !p.is_inbox && !p.archived)
 )
 
+// Listes archivées : section repliée en bas, seul accès au désarchivage.
+const archivedProjects = computed(() =>
+  projectStore.projects.filter((p) => !p.is_inbox && p.archived)
+)
+const showArchived = ref(false)
+
 const ungroupedProjects = computed(() =>
   userProjects.value.filter((p) => !p.group)
 )
@@ -336,14 +342,33 @@ function cycleTheme() {
           @keydown.escape="showNewList = false; newListName = ''"
         />
       </div>
+
+      <!-- Listes archivées (repliées) : accès au désarchivage -->
+      <template v-if="archivedProjects.length">
+        <button class="archived-toggle" @click="showArchived = !showArchived">
+          {{ showArchived ? '▾' : '▸' }} Archivées ({{ archivedProjects.length }})
+        </button>
+        <div
+          v-for="p in archivedProjects"
+          v-show="showArchived"
+          :key="p.id"
+          class="nav-item project-item archived-item"
+          @click="router.push(`/project/${p.id}`)"
+          @contextmenu.prevent="showProjectMenu($event, p)"
+        >
+          <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+          <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
+          <span class="nav-label">{{ p.name }}</span>
+          <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+        </div>
+      </template>
     </nav>
 
-    <!-- Section tags hiérarchiques -->
-    <template v-if="tagStore.tags.length || true">
-      <div class="section-header">
-        <span>Étiquettes</span>
-        <button class="icon-btn" title="Gérer les étiquettes" @click="showTagManager = true">⚙</button>
-      </div>
+    <!-- Section tags hiérarchiques (toujours visible : point d'accès au gestionnaire) -->
+    <div class="section-header">
+      <span>Étiquettes</span>
+      <button class="icon-btn" title="Gérer les étiquettes" @click="showTagManager = true">⚙</button>
+    </div>
       <nav class="nav-section">
         <template v-for="tag in tagStore.rootTags" :key="tag.id">
           <div
@@ -379,7 +404,6 @@ function cycleTheme() {
           </template>
         </template>
       </nav>
-    </template>
 
     <!-- Tag Manager Modal -->
     <TagManager v-if="showTagManager" @close="showTagManager = false" />
@@ -569,6 +593,21 @@ function cycleTheme() {
   color: var(--text-muted);
   text-align: center;
 }
+
+.archived-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  padding: 6px 16px 4px;
+}
+.archived-toggle:hover { color: var(--text-secondary); }
+.archived-item { opacity: 0.55; }
+.archived-item:hover { opacity: 0.85; }
 
 .new-list-input { padding: 4px 8px; }
 .new-list-input input {
