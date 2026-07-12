@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views import (
     ApiKeyViewSet,
+    FCMTokenView,
     MeView,
     PushPublicKeyView,
     PushSubscribeView,
@@ -22,5 +23,6 @@ urlpatterns = [
     path("me/settings/", SettingsView.as_view(), name="settings"),
     path("push/public-key/", PushPublicKeyView.as_view(), name="push-public-key"),
     path("push/subscribe/", PushSubscribeView.as_view(), name="push-subscribe"),
+    path("push/fcm-token/", FCMTokenView.as_view(), name="fcm-token"),
     path("", include(router.urls)),
 ]

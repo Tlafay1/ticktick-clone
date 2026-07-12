@@ -5,6 +5,7 @@ from datetime import timedelta
 from celery import shared_task
 from django.utils import timezone
 
+from apps.accounts.fcm import send_fcm
 from apps.accounts.push import notify_user
 
 from .models import TRASH_RETENTION_DAYS, Reminder, Task
@@ -27,12 +28,13 @@ def dispatch_due_reminders():
         due = reminder.due_at()
         if due is None or due > now:
             continue
-        notify_user(
-            task.user,
-            title=task.title,
-            body="Rappel : cette tâche arrive à échéance.",
-            url=f"/task/{task.id}",
-        )
+        for _push in (notify_user, send_fcm):
+            _push(
+                task.user,
+                title=task.title,
+                body="Rappel : cette tâche arrive à échéance.",
+                url=f"/task/{task.id}",
+            )
         reminder.dispatched_at = now
         reminder.save(update_fields=["dispatched_at"])
         sent += 1

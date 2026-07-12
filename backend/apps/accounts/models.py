@@ -117,3 +117,16 @@ class PushSubscription(models.Model):
 
     def __str__(self):
         return f"PushSubscription<{self.user} {self.endpoint[:32]}…>"
+
+
+class FCMDevice(models.Model):
+    """Jeton FCM d'un appareil Android (push mobile). Cf. apps.accounts.fcm."""
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="fcm_devices"
+    )
+    token = models.CharField(max_length=255, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"FCMDevice<{self.user} {self.token[:16]}…>"

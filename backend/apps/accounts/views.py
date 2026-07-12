@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import ApiKey, PushSubscription, UserSettings
+from .models import ApiKey, FCMDevice, PushSubscription, UserSettings
 from .serializers import (
     ApiKeySerializer,
     RegisterSerializer,
@@ -97,4 +97,22 @@ class PushSubscribeView(APIView):
         PushSubscription.objects.filter(
             user=request.user, endpoint=endpoint
         ).delete()
+        return Response(status=204)
+
+
+class FCMTokenView(APIView):
+    """Enregistre / retire le jeton FCM de l'appareil Android courant."""
+
+    def post(self, request):
+        token = request.data.get("token")
+        if not token:
+            return Response({"detail": "Jeton manquant."}, status=400)
+        FCMDevice.objects.update_or_create(
+            token=token, defaults={"user": request.user}
+        )
+        return Response(status=201)
+
+    def delete(self, request):
+        token = request.data.get("token")
+        FCMDevice.objects.filter(user=request.user, token=token).delete()
         return Response(status=204)

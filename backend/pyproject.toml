@@ -20,6 +20,8 @@ dependencies = [
     "celery>=5.4",
     "redis>=4.6,<5",
     "pywebpush>=2.0",
+    "google-auth>=2.0",
+    "requests>=2.31",
 ]
 
 [dependency-groups]
