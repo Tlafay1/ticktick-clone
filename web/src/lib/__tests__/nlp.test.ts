@@ -77,3 +77,42 @@ describe('parseQuickAdd', () => {
     expect(p.projectName).toBe('Inbox')
   })
 })
+
+describe('parseQuickAdd — dates en français', () => {
+  const ref = new Date('2026-07-12T10:00:00')
+
+  it('« demain » est reconnu (all day)', () => {
+    const p = parseQuickAdd('Appeler le plombier demain', { reference: ref })
+    expect(p.title).toBe('Appeler le plombier')
+    expect(p.due?.getDate()).toBe(13)
+    expect(p.hasTime).toBe(false)
+  })
+
+  it('« demain 14h » : date + heure', () => {
+    const p = parseQuickAdd('Réunion demain 14h', { reference: ref })
+    expect(p.title).toBe('Réunion')
+    expect(p.due?.getDate()).toBe(13)
+    expect(p.due?.getHours()).toBe(14)
+    expect(p.hasTime).toBe(true)
+  })
+
+  it('« lundi prochain » avance au bon jour', () => {
+    const p = parseQuickAdd('Rapport lundi prochain', { reference: ref })
+    // 12/07/2026 = dimanche → lundi prochain = 13/07
+    expect(p.due?.getDay()).toBe(1)
+    expect(p.due!.getTime()).toBeGreaterThan(ref.getTime())
+  })
+
+  it("l'anglais reste en secours (« tomorrow »)", () => {
+    const p = parseQuickAdd('Lunch tomorrow', { reference: ref })
+    expect(p.due?.getDate()).toBe(13)
+  })
+
+  it('français + priorité + tag combinés', () => {
+    const p = parseQuickAdd('Courses demain !high #maison', { reference: ref })
+    expect(p.title).toBe('Courses')
+    expect(p.due?.getDate()).toBe(13)
+    expect(p.priority).toBe(PRIORITY.HIGH)
+    expect(p.tagNames).toEqual(['maison'])
+  })
+})

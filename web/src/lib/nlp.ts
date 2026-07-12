@@ -83,13 +83,20 @@ export function parseQuickAdd(
     }
   }
 
-  // Dates naturelles via chrono (en anglais : "tomorrow 3pm", "next monday"…)
+  // Dates naturelles via chrono — français d'abord (« demain 14h »,
+  // « lundi prochain »), anglais en secours (« tomorrow 3pm »).
   let due: Date | null = null
   let hasTime = false
   const masked = maskSpans(input, spans)
-  const results = chrono.parse(masked, opts.reference ?? new Date(), {
-    forwardDate: true,
-  })
+  const reference = opts.reference ?? new Date()
+  const frResults = chrono.fr.parse(masked, reference, { forwardDate: true })
+  const enResults = chrono.parse(masked, reference, { forwardDate: true })
+  // Les deux locales peuvent matcher partiellement (« at 1pm » vs « demain ») :
+  // on garde celle qui couvre le plus de texte.
+  const results =
+    (enResults[0]?.text.length ?? 0) > (frResults[0]?.text.length ?? 0)
+      ? enResults
+      : frResults.length ? frResults : enResults
   if (results.length > 0) {
     const r = results[0]
     due = r.start.date()
