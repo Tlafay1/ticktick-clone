@@ -16,7 +16,7 @@ import {
 } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
-type ViewMode = 'week' | 'month' | 'agenda'
+type ViewMode = 'day' | 'week' | 'month' | 'agenda'
 
 const viewMode = ref<ViewMode>('week')
 const pivot = ref(new Date())   // semaine ou mois courant
@@ -40,14 +40,18 @@ async function loadTasks() {
   // plage (et non le mois du pivot, qui tronquait la fin de mois).
   const start = viewMode.value === 'agenda'
     ? startOfDay(new Date())
-    : viewMode.value === 'week'
-      ? startOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
-      : startOfMonth(pivot.value)
+    : viewMode.value === 'day'
+      ? startOfDay(pivot.value)
+      : viewMode.value === 'week'
+        ? startOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
+        : startOfMonth(pivot.value)
   const end = viewMode.value === 'agenda'
     ? addDays(startOfDay(new Date()), 30)
-    : viewMode.value === 'week'
-      ? endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
-      : endOfMonth(pivot.value)
+    : viewMode.value === 'day'
+      ? startOfDay(pivot.value)
+      : viewMode.value === 'week'
+        ? endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
+        : endOfMonth(pivot.value)
 
   const rangeStart = startOfDay(addDays(start, -1)).toISOString()
   const rangeEnd = endOfWeek(end, { weekStartsOn: weekStartsOn.value }).toISOString()
@@ -89,10 +93,14 @@ watch(() => taskStore.selectedId, (newId, oldId) => {
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 function prev() {
-  pivot.value = viewMode.value === 'week' ? subWeeks(pivot.value, 1) : subMonths(pivot.value, 1)
+  pivot.value = viewMode.value === 'day'
+    ? addDays(pivot.value, -1)
+    : viewMode.value === 'week' ? subWeeks(pivot.value, 1) : subMonths(pivot.value, 1)
 }
 function next() {
-  pivot.value = viewMode.value === 'week' ? addWeeks(pivot.value, 1) : addMonths(pivot.value, 1)
+  pivot.value = viewMode.value === 'day'
+    ? addDays(pivot.value, 1)
+    : viewMode.value === 'week' ? addWeeks(pivot.value, 1) : addMonths(pivot.value, 1)
 }
 function goToday() { pivot.value = new Date() }
 
@@ -102,6 +110,11 @@ const weekDays = computed(() =>
     start: startOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value }),
     end: endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value }),
   })
+)
+
+// Jours affichés dans la grille horaire : 1 (vue Jour) ou 7 (vue Semaine).
+const gridDays = computed(() =>
+  viewMode.value === 'day' ? [startOfDay(pivot.value)] : weekDays.value
 )
 
 // M19 — bascule moderne / classique
@@ -266,6 +279,9 @@ async function createOnDay() {
 
 // ── Label titre ──────────────────────────────────────────────────────────────
 const headerLabel = computed(() => {
+  if (viewMode.value === 'day') {
+    return format(pivot.value, 'EEEE d MMMM yyyy', { locale: fr })
+  }
   if (viewMode.value === 'week') {
     const ws = weekDays.value[0]
     const we = weekDays.value[6]
@@ -420,10 +436,10 @@ async function onCtxClose() {
           <span class="cal-label">{{ headerLabel }}</span>
         </div>
         <div class="view-tabs">
-          <button v-for="v in ['week','month','agenda']" :key="v" class="view-tab" :class="{ active: viewMode === v }" @click="viewMode = v as ViewMode">
-            {{ v === 'week' ? 'Semaine' : v === 'month' ? 'Mois' : 'Agenda' }}
+          <button v-for="v in ['day','week','month','agenda']" :key="v" class="view-tab" :class="{ active: viewMode === v }" @click="viewMode = v as ViewMode">
+            {{ v === 'day' ? 'Jour' : v === 'week' ? 'Semaine' : v === 'month' ? 'Mois' : 'Agenda' }}
           </button>
-          <button v-if="viewMode === 'week'" class="view-tab" :class="{ active: showTimeMask }" @click="showTimeMask = !showTimeMask" title="Masquer les plages horaires">⏱</button>
+          <button v-if="viewMode === 'week' || viewMode === 'day'" class="view-tab" :class="{ active: showTimeMask }" @click="showTimeMask = !showTimeMask" title="Masquer les plages horaires">⏱</button>
           <button class="view-tab" :class="{ active: calMode === 'classic' }" @click="calMode = calMode === 'modern' ? 'classic' : 'modern'" title="Calendrier classique / moderne">
             {{ calMode === 'classic' ? 'Classique' : 'Moderne' }}
           </button>
@@ -434,7 +450,7 @@ async function onCtxClose() {
       </div>
 
       <!-- M30 — slider de masquage des plages horaires -->
-      <div v-if="showTimeMask && viewMode === 'week'" class="time-mask-bar">
+      <div v-if="showTimeMask && (viewMode === 'week' || viewMode === 'day')" class="time-mask-bar">
         <span class="time-mask-label">Début : {{ String(maskStart).padStart(2,'0') }}:00</span>
         <input type="range" min="0" max="23" step="1" v-model.number="maskStart" class="time-mask-slider" />
         <input type="range" min="1" max="24" step="1" v-model.number="maskEnd"   class="time-mask-slider" />
@@ -442,13 +458,13 @@ async function onCtxClose() {
         <button @click="maskStart = 0; maskEnd = 24" class="time-mask-reset">Réinitialiser</button>
       </div>
 
-      <!-- Vue SEMAINE ─────────────────────────────────────────────────── -->
-      <div v-if="viewMode === 'week'" class="week-view" :class="`cal-${calMode}`" :style="`--hour-px: ${HOUR_PX}px`">
+      <!-- Vues JOUR & SEMAINE (même grille horaire) ─────────────────────── -->
+      <div v-if="viewMode === 'week' || viewMode === 'day'" class="week-view" :class="`cal-${calMode}`" :style="`--hour-px: ${HOUR_PX}px; --day-cols: ${gridDays.length}`">
         <!-- En-tête des jours -->
         <div class="week-header">
           <div class="time-gutter" />
           <div
-            v-for="day in weekDays"
+            v-for="day in gridDays"
             :key="day.toISOString()"
             class="week-day-head"
             :class="{ today: isToday(day) }"
@@ -459,7 +475,7 @@ async function onCtxClose() {
         </div>
 
         <!-- Ligne multi-jours (M4) -->
-        <div v-if="multiDayTasksInWeek().length" class="multiday-row">
+        <div v-if="viewMode === 'week' && multiDayTasksInWeek().length" class="multiday-row">
           <div class="time-gutter multiday-label">Multi-jours</div>
           <div
             v-for="t in multiDayTasksInWeek()"
@@ -475,7 +491,7 @@ async function onCtxClose() {
         <div class="allday-row">
           <div class="time-gutter allday-label">Toute la journée</div>
           <div
-            v-for="day in weekDays"
+            v-for="day in gridDays"
             :key="day.toISOString()"
             class="allday-cell"
             :class="{ 'drag-over': overDayKey === day.toISOString() }"
@@ -518,7 +534,7 @@ async function onCtxClose() {
             <div v-for="h in HOURS" :key="h" class="hour-row">
               <div class="time-gutter">{{ h === 0 ? '' : `${String(h).padStart(2,'0')}:00` }}</div>
               <div
-                v-for="day in weekDays"
+                v-for="day in gridDays"
                 :key="day.toISOString()"
                 class="hour-cell"
                 :class="{ today: isToday(day), 'drag-over': overDayKey === `${day.toISOString()}-${h}` }"
@@ -805,7 +821,7 @@ async function onCtxClose() {
 
 .week-header {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -821,7 +837,7 @@ async function onCtxClose() {
 
 .allday-row {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   border-bottom: 2px solid var(--border);
   flex-shrink: 0;
   min-height: 28px;
@@ -835,7 +851,7 @@ async function onCtxClose() {
 
 .hour-row {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   min-height: var(--hour-px, 40px);
 }
 
@@ -902,7 +918,7 @@ async function onCtxClose() {
 /* ── Multi-jours ───────────────────────────────────────── */
 .multiday-row {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   border-bottom: 1px solid var(--border);
   min-height: 26px;
   align-items: center;
