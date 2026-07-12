@@ -76,6 +76,8 @@ export const tasksApi = {
   restore: (id: number) => http.post<Task>(`/api/tasks/${id}/restore/`),
   duplicate: (id: number) => http.post<Task>(`/api/tasks/${id}/duplicate/`),
   emptyTrash: () => http.post('/api/tasks/empty-trash/'),
+  searchHistory: () => http.get<Array<{ id: number; query: string; created_at: string }>>('/api/search-history/'),
+  clearSearchHistory: () => http.delete('/api/search-history/clear/'),
   activity: (id: number) => http.get<ActivityEntry[]>(`/api/tasks/${id}/activity/`),
   importFile: async (file: File, dedupe = false) => {
     const fd = new FormData()
