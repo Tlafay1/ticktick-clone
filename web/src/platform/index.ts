@@ -1,19 +1,13 @@
 import type { Platform } from './types'
 import { webPlatform } from './web'
+import { electronPlatform } from './electron'
 
 function detect(): Platform {
   if (typeof window === 'undefined') return webPlatform
-  // Electron expose window.electronAPI via contextBridge
-  if ('electronAPI' in window) {
-    // Import synchrone impossible ici — on retourne l'implémentation electron chargée paresseusement
-    // Pour l'instant, on retourne web ; le main.ts Electron peut écraser platform.value
-    return webPlatform
-  }
-  // Capacitor expose window.Capacitor
-  if ('Capacitor' in window) {
-    // Même logique — l'app Capacitor appelle setPlatform() au démarrage
-    return webPlatform
-  }
+  // Electron expose window.electronAPI via contextBridge (preload.js)
+  if ('electronAPI' in window) return electronPlatform
+  // Capacitor : l'app native appelle setPlatform() au démarrage (l'adaptateur
+  // n'est pas importé ici pour garder @capacitor/* hors du build web).
   return webPlatform
 }
 

@@ -1,6 +1,7 @@
 import { onUnmounted } from 'vue'
 import { tasksApi } from '@/api'
 import { http } from '@/api/client'
+import { electronAPI } from '@/lib/electron'
 import type { User } from '@/types'
 
 // Vérifie les rappels dus toutes les 60 secondes et déclenche des notifications navigateur.
@@ -51,6 +52,20 @@ export function useReminderNotifications() {
         // Notifie si le rappel est dû dans les 60 prochaines secondes ou en retard de moins de 5 min
         if (diff <= 60_000 && diff >= -300_000) {
           notified.add(r.id)
+          // Sous Electron : notification native du main (actions Terminer /
+          // Snooze 10 min gérées côté desktop, id = tâche à terminer).
+          const eapi = electronAPI()
+          if (eapi) {
+            eapi.notify({
+              id: task.id,
+              title: `⏰ ${task.title}`,
+              body: r.minutes_before
+                ? `Rappel ${r.minutes_before > 0 ? r.minutes_before + ' min avant' : 'maintenant'}`
+                : 'Rappel',
+              persistent: r.annoying,
+            })
+            continue
+          }
           const n = new Notification(`⏰ ${task.title}`, {
             body: r.minutes_before
               ? `Rappel ${r.minutes_before > 0 ? r.minutes_before + ' min avant' : 'maintenant'}`

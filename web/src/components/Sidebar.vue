@@ -17,6 +17,7 @@ import TagManager from './TagManager.vue'
 import Icon from './Icon.vue'
 import IconRail from './IconRail.vue'
 import MiniCalendar from './MiniCalendar.vue'
+import { updateTray } from '@/lib/electron'
 
 const router = useRouter()
 const route = useRoute()
@@ -107,6 +108,7 @@ async function loadCounts() {
       next7: next7.length,
       inbox: projectStore.inbox ? (byProject[projectStore.inbox.id] ?? 0) : 0,
     }
+    updateTray({ todayCount: today.length })
   } catch { /* hors-ligne : on garde les derniers compteurs */ }
 }
 watch(() => route.fullPath, loadCounts)

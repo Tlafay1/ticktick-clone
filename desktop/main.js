@@ -68,7 +68,8 @@ function createQuickAddWindow() {
       contextIsolation: true,
     },
   })
-  quickAddWindow.loadURL(`${webBaseUrl}/#/quick-add`)
+  // Router en mode history : URL directe (le hash serait ignoré).
+  quickAddWindow.loadURL(`${webBaseUrl}/quick-add`)
 
   quickAddWindow.on('blur', () => quickAddWindow.hide())
 }

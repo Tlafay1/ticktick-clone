@@ -33,6 +33,8 @@ export const routes: RouteRecordRaw[] = [
   { path: '/stats',     name: 'stats',      component: () => import('@/views/StatsView.vue') },
   { path: '/countdown', name: 'countdown',  component: () => import('@/views/CountdownView.vue') },
   { path: '/settings',  name: 'settings',   component: () => import('@/views/SettingsView.vue') },
+  // Fenêtre « Saisie rapide » d'Electron (Ctrl+Maj+A global)
+  { path: '/quick-add', name: 'quick-add',  component: () => import('@/views/QuickAddWindowView.vue') },
   { path: '/calendar',  name: 'calendar',   component: () => import('@/views/CalendarView.vue') },
   { path: '/timeline',  name: 'timeline',   component: () => import('@/views/TimelineView.vue') },
   { path: '/eisenhower',name: 'eisenhower', component: () => import('@/views/EisenhowerView.vue') },

@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Sidebar from '@/components/Sidebar.vue'
 import { focusApi, tasksApi } from '@/api'
 import { playAmbient, stopAmbient } from '@/lib/ambient'
+import { updateTray } from '@/lib/electron'
 import type { Task } from '@/types'
 
 // ── Configuration ────────────────────────────────────────────────────────────
@@ -66,16 +67,22 @@ function formatTime(s: number) {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
-// Titre de l'onglet (M29)
+// Titre de l'onglet (M29) + label du tray Electron (à la minute)
 watch(remaining, (s) => {
   if (running.value) {
     const label = sessionType.value === 'work' ? '🍅' : '☕'
     document.title = `${label} ${formatTime(s)} — Focus`
+    if (s % 60 === 0) updateTray({ focusLabel: formatTime(s) })
   }
 })
 
 watch(running, (r) => {
-  if (!r) document.title = 'TickTick'
+  if (!r) {
+    document.title = 'TickTick'
+    updateTray({ focusLabel: null })
+  } else {
+    updateTray({ focusLabel: formatTime(remaining.value) })
+  }
 })
 
 // Son d'ambiance : bruit synthétisé WebAudio (lib/ambient.ts)
