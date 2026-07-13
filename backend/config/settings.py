@@ -15,6 +15,9 @@ SECRET_KEY = os.environ.get(
 )
 DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
+# Toujours accepter le loopback : les healthchecks Docker sondent /health/
+# via 127.0.0.1, quel que soit le domaine public configuré.
+ALLOWED_HOSTS += [h for h in ("localhost", "127.0.0.1") if h not in ALLOWED_HOSTS]
 
 
 def _env_list(name):
@@ -169,6 +172,8 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     # Traefik termine déjà le TLS ; redirection optionnelle via env.
     SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "0") == "1"
+    # La sonde Docker interroge /health/ en HTTP loopback : ne pas la rediriger.
+    SECURE_REDIRECT_EXEMPT = [r"^health/$"]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
 
