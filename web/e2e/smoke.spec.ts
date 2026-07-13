@@ -11,7 +11,7 @@ test('inscription puis création d\'une tâche', async ({ page }) => {
   await page.getByRole('button', { name: /Créer un compte/i }).click()
   await page.getByPlaceholder('Email').fill(email)
   await page.getByPlaceholder('Mot de passe').fill('secret123')
-  await page.getByRole('button', { name: /Créer|compte|S'inscrire/i }).click()
+  await page.getByRole('button', { name: "S'inscrire" }).click()
 
   // On arrive dans l'app : le Quick Add est visible.
   const quickAdd = page.getByText('Ajouter une tâche')
