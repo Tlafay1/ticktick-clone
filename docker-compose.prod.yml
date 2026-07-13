@@ -51,7 +51,8 @@ services:
         condition: service_started
     healthcheck:
       # /health/ fait un aller-retour DB ; python est déjà dans l'image.
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/', timeout=3)"]
+      # 127.0.0.1 (pas localhost) : évite une résolution IPv6 vers un bind IPv4.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/', timeout=3)"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -123,8 +124,9 @@ services:
     depends_on:
       - backend
     healthcheck:
-      # wget busybox présent dans nginx:alpine.
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+      # wget busybox présent dans nginx:alpine. 127.0.0.1 : localhost peut
+      # résoudre en ::1 alors que nginx n'écoutait qu'en IPv4.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
