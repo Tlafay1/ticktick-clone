@@ -3,6 +3,7 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, Notification, nativeImage } = require('electron')
 const path = require('node:path')
 const Store = require('electron-store')
+const { autoUpdater } = require('electron-updater')
 
 const store = new Store()
 let mainWindow = null
@@ -178,6 +179,15 @@ app.whenReady().then(async () => {
       openAtLogin: store.get('openAtLogin', true),
       openAsHidden: true,
     })
+  }
+
+  // Mises à jour automatiques depuis les GitHub Releases (electron-updater) :
+  // vérifie au lancement puis toutes les 4 h ; notifie, télécharge en fond et
+  // installe au prochain redémarrage. Silencieux hors-ligne ou en dev.
+  if (app.isPackaged) {
+    const checkUpdates = () => autoUpdater.checkForUpdatesAndNotify().catch(() => {})
+    checkUpdates()
+    setInterval(checkUpdates, 4 * 3_600_000)
   }
 })
 
