@@ -15,7 +15,7 @@
  * (Vue Test Utils pour les composants, ou test de store/logique pure).
  * Le natif et l'UI lourde sont dans docs/acceptance-checklist.md.
  */
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useTaskStore } from '@/stores/tasks'
 import { useProjectStore } from '@/stores/projects'
@@ -180,6 +180,28 @@ describe('Jalon 2 — organisation', () => {
     expect(Array.isArray(store.groups)).toBe(true)
   })
 
+  it('M2 — smart list custom : loadProject ne force pas status=0 (les règles pilotent le statut)', async () => {
+    const urls: string[] = []
+    vi.stubGlobal('fetch', (async (url: RequestInfo | URL) => {
+      urls.push(String(url))
+      return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as typeof fetch)
+    try {
+      const projectStore = useProjectStore()
+      projectStore.projects = [
+        { id: 5, is_smart: true } as Project,
+        { id: 6, is_smart: false } as Project,
+      ]
+      const store = useTaskStore()
+      await store.loadProject(5)
+      await store.loadProject(6)
+      expect(urls[0]).toBe('/api/tasks/?project=5')
+      expect(urls[1]).toBe('/api/tasks/?project=6&status=0')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('M2 — inbox est filtré des projets normaux', () => {
     const store = useProjectStore()
     store.projects = [
@@ -321,12 +343,53 @@ describe('Jalon 2 — organisation', () => {
     expect(typeof api.remindersApi.remove).toBe('function')
   })
 
-  it('M15 — Annoying Alert : is_annoying est un champ boolean sur Reminder', () => {
+  it('M15 — Annoying Alert : annoying est un champ boolean sur Reminder (nom du champ backend)', () => {
     const reminder: Reminder = {
       id: 1, task: 1, trigger_type: 'relative',
-      minutes_before: 0, trigger_at: null, is_annoying: true,
+      minutes_before: 0, trigger_at: null, annoying: true,
     }
-    expect(reminder.is_annoying).toBe(true)
+    expect(reminder.annoying).toBe(true)
+  })
+
+  it('M15 — Annoying Alert : un rappel annoying=true (payload backend) produit une notification persistante', async () => {
+    // Le backend sérialise `annoying` — le composable doit le lire tel quel.
+    const captured: Array<{ title: string; opts?: { requireInteraction?: boolean } }> = []
+    vi.useFakeTimers()
+    vi.stubGlobal('Notification', class {
+      static permission = 'granted'
+      onclick: (() => void) | null = null
+      constructor(title: string, opts?: { requireInteraction?: boolean }) {
+        captured.push({ title, opts })
+      }
+      static async requestPermission() { return 'granted' }
+    })
+    vi.stubGlobal('fetch', (async (url: RequestInfo | URL) => {
+      const u = String(url)
+      // Contrat réel : TaskSerializer imbrique les rappels dans /api/tasks/.
+      const payload = u.startsWith('/api/me/')
+        ? { settings: {} }
+        : [{
+            id: 1, title: 'Tâche urgente', status: 0, due_date: new Date().toISOString(),
+            reminders: [{ id: 90001, trigger_type: 'relative', minutes_before: 0, trigger_at: null, annoying: true }],
+          }]
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }) as typeof fetch)
+    try {
+      const { useReminderNotifications } = await import('@/composables/useReminderNotifications')
+      const { start, stop } = useReminderNotifications()
+      await start()
+      stop()
+      const notif = captured.find(n => n.title.includes('Tâche urgente'))
+      expect(notif).toBeDefined()
+      expect(notif?.opts?.requireInteraction).toBe(true)
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('M26 — options de snooze (5, 10, 15, 30 min, 1h, demain)', () => {
@@ -553,6 +616,27 @@ describe('Jalon 5 — sync, offline, données', () => {
     const api = await import('@/api')
     expect(typeof api.versionsApi.list).toBe('function')
     expect(typeof api.versionsApi.restore).toBe('function')
+  })
+
+  it('M27 — restaurer une version appelle POST /api/tasks/{id}/restore-version/ avec {version_id} (contrat backend)', async () => {
+    const calls: Array<{ url: string; method?: string; body?: string }> = []
+    vi.stubGlobal('fetch', (async (url: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(url), method: init?.method, body: init?.body as string })
+      return new Response(JSON.stringify({ id: 7, description: 'v1' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }) as typeof fetch)
+    try {
+      const { versionsApi } = await import('@/api')
+      await versionsApi.restore(7, 3)
+      expect(calls).toHaveLength(1)
+      expect(calls[0].url).toBe('/api/tasks/7/restore-version/')
+      expect(calls[0].method).toBe('POST')
+      expect(JSON.parse(calls[0].body ?? '')).toEqual({ version_id: 3 })
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('M1 — attachmentsApi est exporté depuis api/index', async () => {

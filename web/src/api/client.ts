@@ -4,6 +4,31 @@ import { pushToast } from '@/composables/useToast'
 
 const ACCESS_KEY = 'tt.access'
 const REFRESH_KEY = 'tt.refresh'
+const SERVER_KEY = 'tt.server'
+
+/**
+ * URL du serveur self-hosted. Vide sur le web (chemins relatifs, même
+ * origine) ; requise dans les apps embarquées (Capacitor/Electron packagé)
+ * où l'UI n'est pas servie par le backend.
+ */
+export const serverBase = {
+  get(): string {
+    try { return (localStorage.getItem(SERVER_KEY) ?? '').replace(/\/+$/, '') } catch { return '' }
+  },
+  set(url: string) {
+    try {
+      const clean = url.trim().replace(/\/+$/, '')
+      if (clean) localStorage.setItem(SERVER_KEY, clean)
+      else localStorage.removeItem(SERVER_KEY)
+    } catch { /* stockage indisponible */ }
+  },
+}
+
+/** Préfixe une URL /api/… avec le serveur configuré (no-op si vide). */
+export function apiUrl(url: string): string {
+  const base = serverBase.get()
+  return base && url.startsWith('/') ? base + url : url
+}
 
 export const tokens = {
   get access() {
@@ -42,7 +67,7 @@ async function tryRefresh(): Promise<boolean> {
   refreshing ??= (async () => {
     const refresh = tokens.refresh
     if (!refresh) return false
-    const res = await fetch('/api/auth/token/refresh/', {
+    const res = await fetch(apiUrl('/api/auth/token/refresh/'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh }),
@@ -70,7 +95,7 @@ export async function request<T>(
 
   let res: Response
   try {
-    res = await fetch(url, {
+    res = await fetch(apiUrl(url), {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,

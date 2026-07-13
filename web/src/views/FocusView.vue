@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import Sidebar from '@/components/Sidebar.vue'
 import { focusApi, tasksApi } from '@/api'
+import { playAmbient, stopAmbient } from '@/lib/ambient'
+import { updateTray } from '@/lib/electron'
 import type { Task } from '@/types'
 
 // ── Configuration ────────────────────────────────────────────────────────────
@@ -28,6 +30,7 @@ const pomodorosBeforeLong = ref(4)
 const pomoCount = ref(0)
 
 const running = ref(false)
+const paused = ref(false)       // en pause : la session courante peut reprendre
 const elapsed = ref(0)          // secondes écoulées
 const sessionStart = ref<Date | null>(null)
 const currentSessionId = ref<number | null>(null)
@@ -64,25 +67,76 @@ function formatTime(s: number) {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
 }
 
-// Titre de l'onglet (M29)
+// Titre de l'onglet (M29) + label du tray Electron (à la minute)
 watch(remaining, (s) => {
   if (running.value) {
     const label = sessionType.value === 'work' ? '🍅' : '☕'
     document.title = `${label} ${formatTime(s)} — Focus`
+    if (s % 60 === 0) updateTray({ focusLabel: formatTime(s) })
   }
 })
 
 watch(running, (r) => {
-  if (!r) document.title = 'TickTick'
+  if (!r) {
+    document.title = 'TickTick'
+    updateTray({ focusLabel: null })
+  } else {
+    updateTray({ focusLabel: formatTime(remaining.value) })
+  }
 })
+
+// Son d'ambiance : bruit synthétisé WebAudio (lib/ambient.ts)
+watch(ambientSound, (k) => {
+  if (k === 'none') stopAmbient()
+  else playAmbient(k)
+})
+
+// ── Statistiques de focus (temps total + répartition par liste) ─────────────
+const focusStats = ref<{ total_seconds: number; by_list: Record<string, number>; by_tag: Record<string, number> } | null>(null)
+
+async function loadStats() {
+  focusStats.value = await focusApi.stats().catch(() => null)
+}
+
+const topLists = computed(() => {
+  if (!focusStats.value) return []
+  return Object.entries(focusStats.value.by_list).sort((a, b) => b[1] - a[1]).slice(0, 5)
+})
+
+function durationLabel(s: number) {
+  const h = Math.floor(s / 3600)
+  const m = Math.round((s % 3600) / 60)
+  return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`
+}
+
+onMounted(loadStats)
 
 onUnmounted(() => {
   if (ticker) clearInterval(ticker)
+  stopAmbient()
   document.title = 'TickTick'
 })
 
+function startTicker() {
+  ticker = setInterval(() => {
+    elapsed.value++
+    if (totalSeconds.value !== null && elapsed.value >= totalSeconds.value) {
+      finishTimer()
+    }
+  }, 1000)
+}
+
 async function startTimer() {
+  // Reprise après pause : on continue la MÊME session, sans repartir de zéro.
+  if (paused.value && currentSessionId.value) {
+    paused.value = false
+    running.value = true
+    startTicker()
+    return
+  }
+
   running.value = true
+  paused.value = false
   elapsed.value = 0
   sessionStart.value = new Date()
 
@@ -95,17 +149,13 @@ async function startTimer() {
   })
   currentSessionId.value = session.id
 
-  ticker = setInterval(() => {
-    elapsed.value++
-    if (totalSeconds.value !== null && elapsed.value >= totalSeconds.value) {
-      finishTimer()
-    }
-  }, 1000)
+  startTicker()
 }
 
 async function finishTimer() {
   if (ticker) { clearInterval(ticker); ticker = null }
   running.value = false
+  paused.value = false
 
   if (currentSessionId.value && sessionStart.value) {
     const durationSeconds = elapsed.value
@@ -115,6 +165,8 @@ async function finishTimer() {
     })
     currentSessionId.value = null
   }
+
+  loadStats()
 
   // Avancer le Pomodoro
   if (mode.value === 'pomodoro' && sessionType.value === 'work') {
@@ -131,10 +183,13 @@ async function finishTimer() {
 function pauseTimer() {
   if (ticker) { clearInterval(ticker); ticker = null }
   running.value = false
+  paused.value = true
 }
 
 function resetTimer() {
-  pauseTimer()
+  if (ticker) { clearInterval(ticker); ticker = null }
+  running.value = false
+  paused.value = false
   elapsed.value = 0
   pomoCount.value = 0
   sessionType.value = 'work'
@@ -218,8 +273,11 @@ const sessionColor = computed(() => sessionType.value === 'work' ? 'var(--prio-h
 
         <!-- Contrôles -->
         <div class="controls">
-          <button v-if="!running" class="ctrl-btn start" :style="`background: ${sessionColor}`" @click="startTimer">▶ Démarrer</button>
-          <template v-else>
+          <button v-if="!running" class="ctrl-btn start" :style="`background: ${sessionColor}`" @click="startTimer">
+            {{ paused ? '▶ Reprendre' : '▶ Démarrer' }}
+          </button>
+          <button v-if="paused" class="ctrl-btn stop" @click="finishTimer">⏹ Terminer</button>
+          <template v-if="running">
             <button class="ctrl-btn pause" @click="pauseTimer">⏸ Pause</button>
             <button class="ctrl-btn stop" @click="finishTimer">⏹ Terminer</button>
           </template>
@@ -280,6 +338,24 @@ const sessionColor = computed(() => sessionType.value === 'work' ? 'var(--prio-h
               :class="{ active: ambientSound === s.key }"
               @click="ambientSound = s.key"
             >{{ s.label }}</button>
+          </div>
+        </div>
+
+        <!-- Statistiques de focus -->
+        <div v-if="focusStats && focusStats.total_seconds > 0" class="focus-stats">
+          <div class="fs-title">Statistiques</div>
+          <div class="fs-total">
+            <span class="fs-num">{{ durationLabel(focusStats.total_seconds) }}</span>
+            <span class="fs-caption">de focus au total</span>
+          </div>
+          <div v-if="topLists.length" class="fs-dist">
+            <div v-for="[name, secs] in topLists" :key="name" class="fs-row">
+              <span class="fs-name">{{ name }}</span>
+              <div class="fs-bar">
+                <div class="fs-fill" :style="`width:${Math.round(secs / topLists[0][1] * 100)}%`" />
+              </div>
+              <span class="fs-secs">{{ durationLabel(secs) }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -374,4 +450,24 @@ const sessionColor = computed(() => sessionType.value === 'work' ? 'var(--prio-h
 .ambient-btn { padding: 4px 12px; border-radius: 14px; border: 1px solid var(--border); background: none; font-size: 12.5px; cursor: pointer; color: var(--text-secondary); }
 .ambient-btn:hover { border-color: var(--primary); color: var(--primary); }
 .ambient-btn.active { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
+
+/* Statistiques */
+.focus-stats {
+  width: 100%;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+}
+.fs-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
+.fs-total { display: flex; align-items: baseline; gap: 6px; margin-bottom: 10px; }
+.fs-num { font-size: 22px; font-weight: 700; }
+.fs-caption { font-size: 12px; color: var(--text-muted); }
+.fs-dist { display: flex; flex-direction: column; gap: 6px; }
+.fs-row { display: flex; align-items: center; gap: 8px; }
+.fs-name { font-size: 12px; width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fs-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--bg-hover); overflow: hidden; }
+.fs-fill { height: 100%; background: var(--primary); border-radius: 3px; }
+.fs-secs { font-size: 11px; color: var(--text-muted); width: 52px; text-align: right; }
 </style>

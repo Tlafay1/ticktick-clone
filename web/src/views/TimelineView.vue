@@ -57,7 +57,7 @@
       </div>
     </div>
   </div>
-  <TaskDetail v-if="taskStore.selectedId" class="tl-detail" />
+  <TaskDetail v-if="taskStore.selected()" class="tl-detail" />
   </div>
 </template>
 

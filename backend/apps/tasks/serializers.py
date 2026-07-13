@@ -143,6 +143,11 @@ class TaskSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"Tag inconnu : {tag.name}.")
         return tags
 
+    def validate_section(self, section):
+        if section is not None and section.project.user != self.context["request"].user:
+            raise serializers.ValidationError("Section inconnue.")
+        return section
+
     def validate_progress(self, value):
         if not 0 <= value <= 100:
             raise serializers.ValidationError("La progression va de 0 à 100.")
@@ -157,12 +162,33 @@ class TaskSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"parent": "Une tâche ne peut pas être sa propre parente."}
                 )
+            if self.instance:
+                # Refuse aussi tout descendant : un cycle ferait boucler à
+                # l'infini depth/descendants(). Remontée de la chaîne
+                # d'ancêtres du parent proposé, bornée par un ensemble de
+                # visités (tolérante à un cycle déjà présent en base).
+                node, seen = parent.parent, {parent.pk}
+                while node is not None and node.pk not in seen:
+                    if node.pk == self.instance.pk:
+                        raise serializers.ValidationError(
+                            {"parent": "Une tâche ne peut pas devenir la"
+                             " sous-tâche d'un de ses descendants."}
+                        )
+                    seen.add(node.pk)
+                    node = node.parent
             if parent.depth + 1 >= MAX_SUBTASK_DEPTH:
                 raise serializers.ValidationError(
                     {"parent": f"Imbrication limitée à {MAX_SUBTASK_DEPTH} niveaux."}
                 )
             # Une sous-tâche vit dans la liste de son parent.
             data["project"] = parent.project
+        # La section doit appartenir à la liste de la tâche.
+        section = data.get("section", getattr(self.instance, "section", None))
+        project = data.get("project", getattr(self.instance, "project", None))
+        if section is not None and project is not None and section.project_id != project.id:
+            raise serializers.ValidationError(
+                {"section": "La section n'appartient pas à cette liste."}
+            )
         # Le flag épinglé maintient pinned_at pour l'ordre d'épinglage.
         return data
 

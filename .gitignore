@@ -18,6 +18,11 @@ dist/
 .vite/
 *.local
 
+# Playwright (E2E)
+web/test-results/
+web/playwright-report/
+web/playwright/.cache/
+
 # Capacitor / Android
 mobile/android/.gradle/
 mobile/android/app/build/
@@ -36,9 +41,21 @@ desktop/release/
 .vscode/
 *.log
 
-# aider (agent local) — la config (.aider.conf.yml, .aider.model.settings.yml)
-# est versionnée ; seuls les caches/historiques sont ignorés.
-.aider.tags.cache.v*/
-.aider.chat.history.md
-.aider.input.history
-.aider.llm.history
+# Résidus d'agent local (aider) — historiques/caches éventuels
+.aider*
+
+# Outillage Claude Code local (réglages machine)
+.claude/settings.local.json
+
+# Captures d'écran / brouillons de travail à la racine
+/image.png
+
+# Electron (electron-builder)
+desktop/dist-electron/
+
+# Logs de développement
+scripts/logs/
+# Générés par `npx cap sync` (copie de web/dist + plugins cordova)
+mobile/android/app/src/main/assets/public/
+mobile/android/app/src/main/assets/capacitor.plugins.json
+mobile/android/capacitor-cordova-android-plugins/

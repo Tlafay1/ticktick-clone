@@ -51,6 +51,28 @@ def test_m01_subtask_tier1_lives_in_parent_project(api, inbox):
     assert child["project"] == inbox.id  # forcé sur la liste du parent
 
 
+def test_m01_subtask_reparent_cycle_rejected(api, inbox):
+    """Reparenter une tâche sous elle-même ou l'un de ses descendants → 400.
+
+    Sans ce garde-fou, le cycle créé fait boucler à l'infini Task.depth et
+    Task.descendants() au prochain complete/trash (auto-DoS).
+    """
+    a = mk(api, inbox.id, "A")
+    b = mk(api, inbox.id, "B", parent=a["id"])
+    c = mk(api, inbox.id, "C", parent=b["id"])
+
+    # A ne peut devenir enfant ni d'elle-même, ni de son enfant, ni d'un
+    # descendant plus profond.
+    assert api.patch(f"/api/tasks/{a['id']}/", {"parent": a["id"]}).status_code == 400
+    assert api.patch(f"/api/tasks/{a['id']}/", {"parent": b["id"]}).status_code == 400
+    assert api.patch(f"/api/tasks/{a['id']}/", {"parent": c["id"]}).status_code == 400
+
+    # Un reparentage légitime reste accepté (C remonte sous A).
+    res = api.patch(f"/api/tasks/{c['id']}/", {"parent": a["id"]})
+    assert res.status_code == 200
+    assert res.data["parent"] == a["id"]
+
+
 # ---- Module 2.1 : Inbox + listes ----
 
 def test_m02_inbox_exists_and_is_protected(api, inbox):

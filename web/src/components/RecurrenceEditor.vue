@@ -4,7 +4,7 @@
  * Produit une chaîne RRULE:FREQ=... ou '' pour supprimer.
  */
 import { ref, computed, watch } from 'vue'
-import { buildRRule, parseRRule, RRULE_PRESETS, type RRuleFreq } from '@/lib/rrule'
+import { buildRRule, parseRRule, RRULE_PRESETS, isRDates, parseRDates, buildRDates, type RRuleFreq } from '@/lib/rrule'
 
 const props = defineProps<{ modelValue: string; repeatFrom: 'due' | 'completion' }>()
 const emit = defineEmits<{
@@ -18,13 +18,16 @@ const DAYS = [
   { key: 'SU', label: 'D' },
 ]
 
-const mode = ref<'none' | 'preset' | 'custom'>('none')
+const mode = ref<'none' | 'preset' | 'custom' | 'dates'>('none')
 const selectedPreset = ref('')
 const freq = ref<RRuleFreq>('DAILY')
 const interval = ref(1)
 const byDay = ref<string[]>([])
 const count = ref<number | null>(null)
 const until = ref('')
+// Dates spécifiques (RDATE)
+const specificDates = ref<string[]>([])
+const newDate = ref('')
 
 // Parse le rrule entrant
 watch(() => props.modelValue, (v) => {
@@ -33,6 +36,11 @@ watch(() => props.modelValue, (v) => {
   if (preset) {
     mode.value = 'preset'
     selectedPreset.value = v
+    return
+  }
+  if (isRDates(v)) {
+    mode.value = 'dates'
+    specificDates.value = parseRDates(v)
     return
   }
   mode.value = 'custom'
@@ -53,7 +61,20 @@ const customRRule = computed(() =>
 function apply() {
   if (mode.value === 'none') emit('update:modelValue', '')
   else if (mode.value === 'preset') emit('update:modelValue', selectedPreset.value)
+  else if (mode.value === 'dates') emit('update:modelValue', buildRDates(specificDates.value))
   else emit('update:modelValue', customRRule.value)
+}
+
+function addDate() {
+  if (!newDate.value || specificDates.value.includes(newDate.value)) return
+  specificDates.value = [...specificDates.value, newDate.value].sort()
+  newDate.value = ''
+  apply()
+}
+
+function removeDate(d: string) {
+  specificDates.value = specificDates.value.filter(x => x !== d)
+  apply()
 }
 
 function toggleDay(d: string) {
@@ -77,6 +98,10 @@ function toggleDay(d: string) {
       <label class="rec-radio">
         <input type="radio" v-model="mode" value="custom" />
         Personnalisé
+      </label>
+      <label class="rec-radio">
+        <input type="radio" v-model="mode" value="dates" />
+        Dates spécifiques
       </label>
     </div>
 
@@ -122,6 +147,21 @@ function toggleDay(d: string) {
       </div>
     </div>
 
+    <!-- Dates spécifiques (RDATE) : la tâche avance de date en date -->
+    <div v-if="mode === 'dates'" class="dates-form">
+      <div class="custom-row">
+        <input v-model="newDate" type="date" class="until-input" @keydown.enter="addDate" />
+        <button class="btn btn-ghost add-date-btn" :disabled="!newDate" @click="addDate">＋ Ajouter</button>
+      </div>
+      <div v-if="specificDates.length" class="date-chips">
+        <span v-for="d in specificDates" :key="d" class="date-chip">
+          {{ new Date(`${d}T00:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }) }}
+          <button class="chip-x" @click="removeDate(d)">✕</button>
+        </span>
+      </div>
+      <div v-else class="dates-hint">Ajoutez les dates auxquelles la tâche doit se répéter.</div>
+    </div>
+
     <!-- repeat_from -->
     <div v-if="mode !== 'none'" class="repeat-from-row">
       <label class="field-sublabel">Basé sur</label>
@@ -135,7 +175,7 @@ function toggleDay(d: string) {
       </label>
     </div>
 
-    <div v-if="mode !== 'none'" class="rrule-preview">{{ mode === 'preset' ? selectedPreset : customRRule }}</div>
+    <div v-if="mode !== 'none'" class="rrule-preview">{{ mode === 'preset' ? selectedPreset : mode === 'dates' ? buildRDates(specificDates) : customRRule }}</div>
   </div>
 </template>
 
@@ -168,6 +208,22 @@ function toggleDay(d: string) {
 .day-btn { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border); font-size: 12px; cursor: pointer; background: none; color: var(--text-secondary); }
 .day-btn:hover { border-color: var(--primary); }
 .day-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.dates-form { display: flex; flex-direction: column; gap: 8px; }
+.add-date-btn { font-size: 12.5px; }
+.date-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+}
+.chip-x { border: none; background: none; color: inherit; cursor: pointer; font-size: 10px; padding: 0; }
+.dates-hint { font-size: 12px; color: var(--text-muted); }
 
 .repeat-from-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .field-sublabel { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; }

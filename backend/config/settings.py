@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.focus",
     "apps.countdown",
     "apps.sync",
+    "apps.webhooks",
     "channels",
 ]
 
@@ -181,8 +182,16 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.tasks.tasks.dispatch_due_reminders",
         "schedule": 60.0,  # toutes les minutes
     },
+    "dispatch-habit-reminders": {
+        "task": "apps.habits.tasks.dispatch_habit_reminders",
+        "schedule": 60.0,  # toutes les minutes
+    },
     "purge-expired-trash": {
         "task": "apps.tasks.tasks.purge_expired_trash",
+        "schedule": 3600.0,  # toutes les heures
+    },
+    "refresh-ics-subscriptions": {
+        "task": "apps.calendars.tasks.refresh_ics_subscriptions",
         "schedule": 3600.0,  # toutes les heures
     },
 }
@@ -191,3 +200,7 @@ CELERY_BEAT_SCHEDULE = {
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
 VAPID_ADMIN_EMAIL = os.environ.get("VAPID_ADMIN_EMAIL", "admin@example.com")
+
+# FCM (push Android) — service account collé dans UNE variable d'env (aucun
+# fichier google-services.json côté serveur). Vide = FCM désactivé (no-op).
+FCM_SERVICE_ACCOUNT_JSON = os.environ.get("FCM_SERVICE_ACCOUNT_JSON", "")

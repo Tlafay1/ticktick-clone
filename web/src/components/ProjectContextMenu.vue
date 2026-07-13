@@ -9,7 +9,7 @@ const props = defineProps<{
   x: number
   y: number
 }>()
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; edit: [] }>()
 
 const projectStore = useProjectStore()
 const router = useRouter()
@@ -101,6 +101,10 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
     <template v-else>
       <button class="menu-item" @click="editingName = true; nameInput = project.name">
         <span class="mi-icon">✏️</span> Renommer
+      </button>
+
+      <button class="menu-item" @click="emit('edit'); close()">
+        <span class="mi-icon">⚙️</span> Modifier (icône, smart list…)
       </button>
 
       <!-- Couleur -->

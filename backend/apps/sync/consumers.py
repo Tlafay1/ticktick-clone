@@ -1,7 +1,6 @@
 import json
 
 from channels.generic.websocket import AsyncWebsocketConsumer
-from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 
@@ -10,15 +9,10 @@ class TaskConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         token = self._get_token()
-        if not token:
+        user_id = self._get_user_id(token) if token else None
+        if user_id is None:
             await self.close()
             return
-        try:
-            UntypedToken(token)
-        except (InvalidToken, TokenError):
-            await self.close()
-            return
-        user_id = self._get_user_id(token)
         self.group_name = f"user_{user_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
@@ -52,6 +46,9 @@ class TaskConsumer(AsyncWebsocketConsumer):
         return None
 
     def _get_user_id(self, token):
+        """user_id d'un token d'ACCÈS valide, sinon None (refresh compris)."""
         from rest_framework_simplejwt.tokens import AccessToken
-        t = AccessToken(token)
-        return t["user_id"]
+        try:
+            return AccessToken(token)["user_id"]
+        except (InvalidToken, TokenError):
+            return None

@@ -48,6 +48,18 @@ class TaskFilter(django_filters.FilterSet):
     # Filtres sur la date planifiée (start_date si défini, sinon due_date en fallback)
     scheduled_before = django_filters.IsoDateTimeFilter(method="filter_scheduled_before")
     scheduled_after = django_filters.IsoDateTimeFilter(method="filter_scheduled_after")
+    # ?project=<id> : liste normale → filtre FK ; smart list custom → ses
+    # filter_rules s'appliquent à l'ensemble des tâches (module 2.3).
+    project = django_filters.NumberFilter(method="filter_project")
+
+    def filter_project(self, qs, name, value):
+        from apps.projects.filters import apply_smart_list
+        from apps.projects.models import Project
+
+        project = Project.objects.filter(pk=int(value), user=self.request.user).first()
+        if project is not None and project.is_smart:
+            return apply_smart_list(qs, project)
+        return qs.filter(project_id=int(value))
 
     def filter_scheduled_before(self, qs, name, value):
         return qs.filter(
@@ -61,7 +73,7 @@ class TaskFilter(django_filters.FilterSet):
 
     class Meta:
         model = Task
-        fields = ["project", "section", "parent", "status", "priority", "is_pinned"]
+        fields = ["section", "parent", "status", "priority", "is_pinned"]
 
 
 class TaskViewSet(OwnedModelViewSet):
@@ -103,12 +115,28 @@ class TaskViewSet(OwnedModelViewSet):
             qs = qs.filter(attachments__isnull=False).distinct()
         return qs
 
+    # ----- Webhooks -----
+
+    def _emit(self, event, task):
+        from apps.webhooks.dispatch import emit
+
+        emit(self.request.user, event, self.get_serializer(task).data)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+        self._emit("task.created", serializer.instance)
+
+    def perform_update(self, serializer):
+        serializer.save()
+        self._emit("task.updated", serializer.instance)
+
     # ----- Transitions -----
 
     @action(detail=True, methods=["post"])
     def complete(self, request, pk=None):
         task = self.get_object()
         task.set_status(Task.Status.COMPLETED)
+        self._emit("task.completed", task)
         return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["post"], url_path="wont-do")
@@ -144,7 +172,11 @@ class TaskViewSet(OwnedModelViewSet):
         if task.trashed_at is None and request.query_params.get("permanent") != "1":
             task.trash()
             return Response(status=status.HTTP_204_NO_CONTENT)
+        task_id = task.id
         task.delete()
+        from apps.webhooks.dispatch import emit
+
+        emit(request.user, "task.deleted", {"id": task_id})
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"], url_path="batch")

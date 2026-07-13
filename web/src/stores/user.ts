@@ -18,6 +18,8 @@ export const useUserStore = defineStore('user', () => {
           : 'light'
         : t
     document.documentElement.setAttribute('data-theme', resolved)
+    // Cache pour appliquer le thème dès le prochain chargement (avant l'API).
+    try { localStorage.setItem('tt-theme', resolved) } catch { /* stockage indisponible */ }
   }
 
   function applyPreset(preset: string) {
@@ -27,6 +29,7 @@ export const useUserStore = defineStore('user', () => {
     } else {
       document.documentElement.removeAttribute('data-accent')
     }
+    try { localStorage.setItem('tt-accent', preset) } catch { /* stockage indisponible */ }
   }
 
   watch(theme, applyTheme)

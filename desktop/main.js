@@ -9,6 +9,14 @@ let mainWindow = null
 let tray = null
 let quickAddWindow = null
 
+// ── Serveur web local (mode packagé) ─────────────────────────────────────────
+// En mode packagé, l'UI (web/dist embarqué) est servie par un mini serveur
+// HTTP loopback — cf. serve-dist.js. En dev, on garde vite (proxy /api).
+
+const { startWebServer } = require('./serve-dist')
+
+let webBaseUrl = 'http://localhost:5173'
+
 // ── Fenêtre principale ────────────────────────────────────────────────────────
 
 function createMainWindow() {
@@ -26,12 +34,9 @@ function createMainWindow() {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
   })
 
-  const isDev = !app.isPackaged
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173')
+  mainWindow.loadURL(webBaseUrl)
+  if (!app.isPackaged) {
     mainWindow.webContents.openDevTools()
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../web/dist/index.html'))
   }
 
   mainWindow.once('ready-to-show', () => {
@@ -63,9 +68,8 @@ function createQuickAddWindow() {
       contextIsolation: true,
     },
   })
-  const isDev = !app.isPackaged
-  const base = isDev ? 'http://localhost:5173' : `file://${path.join(__dirname, '../web/dist/index.html')}`
-  quickAddWindow.loadURL(`${base}#/quick-add`)
+  // Router en mode history : URL directe (le hash serait ignoré).
+  quickAddWindow.loadURL(`${webBaseUrl}/quick-add`)
 
   quickAddWindow.on('blur', () => quickAddWindow.hide())
 }
@@ -156,7 +160,11 @@ ipcMain.on('tray-update', (_e, data) => updateTrayMenu(data.todayCount, data.foc
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (app.isPackaged) {
+    // web/dist est embarqué par electron-builder (extraResources → web-dist).
+    webBaseUrl = await startWebServer(path.join(process.resourcesPath, 'web-dist'))
+  }
   createMainWindow()
   createQuickAddWindow()
   createTray()

@@ -8,12 +8,12 @@ describe('dueLabel', () => {
   it('affiche l\'heure quand la tâche n\'est pas all-day', () => {
     const today = new Date()
     const iso = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 14, 30)
-    expect(dueLabel(iso.toISOString(), false)).toMatch(/Today 14:30/)
+    expect(dueLabel(iso.toISOString(), false)).toMatch(/Aujourd'hui 14:30/)
   })
 
-  it('dit "Today" pour aujourd\'hui en all-day', () => {
+  it('dit "Aujourd\'hui" pour aujourd\'hui en all-day', () => {
     const t = new Date()
-    expect(dueLabel(day(t.getFullYear(), t.getMonth(), t.getDate()), true)).toBe('Today')
+    expect(dueLabel(day(t.getFullYear(), t.getMonth(), t.getDate()), true)).toBe("Aujourd'hui")
   })
 
   it('renvoie vide sans date', () => {

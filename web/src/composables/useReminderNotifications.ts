@@ -1,6 +1,7 @@
 import { onUnmounted } from 'vue'
-import { tasksApi, remindersApi } from '@/api'
+import { tasksApi } from '@/api'
 import { http } from '@/api/client'
+import { electronAPI } from '@/lib/electron'
 import type { User } from '@/types'
 
 // Vérifie les rappels dus toutes les 60 secondes et déclenche des notifications navigateur.
@@ -33,13 +34,9 @@ export function useReminderNotifications() {
     }
 
     for (const task of tasks) {
-      if (!task.due_date) continue
-      let reminders: Awaited<ReturnType<typeof remindersApi.list>>
-      try {
-        reminders = await remindersApi.list(task.id)
-      } catch {
-        continue
-      }
+      // Les rappels sont imbriqués dans la réponse /api/tasks/ (TaskSerializer) :
+      // plus d'aller-retour par tâche (l'ancien N+1 coûtait un GET/tâche/minute).
+      const reminders = task.reminders ?? []
       for (const r of reminders) {
         if (notified.has(r.id)) continue
 
@@ -55,14 +52,28 @@ export function useReminderNotifications() {
         // Notifie si le rappel est dû dans les 60 prochaines secondes ou en retard de moins de 5 min
         if (diff <= 60_000 && diff >= -300_000) {
           notified.add(r.id)
+          // Sous Electron : notification native du main (actions Terminer /
+          // Snooze 10 min gérées côté desktop, id = tâche à terminer).
+          const eapi = electronAPI()
+          if (eapi) {
+            eapi.notify({
+              id: task.id,
+              title: `⏰ ${task.title}`,
+              body: r.minutes_before
+                ? `Rappel ${r.minutes_before > 0 ? r.minutes_before + ' min avant' : 'maintenant'}`
+                : 'Rappel',
+              persistent: r.annoying,
+            })
+            continue
+          }
           const n = new Notification(`⏰ ${task.title}`, {
             body: r.minutes_before
               ? `Rappel ${r.minutes_before > 0 ? r.minutes_before + ' min avant' : 'maintenant'}`
               : 'Rappel',
             tag: `reminder-${r.id}`,
-            requireInteraction: r.is_annoying,
+            requireInteraction: r.annoying,
           })
-          if (r.is_annoying) {
+          if (r.annoying) {
             // Annoying Alert : relance la notification toutes les 30 s jusqu'à interaction
             let count = 0
             const repeat = setInterval(() => {

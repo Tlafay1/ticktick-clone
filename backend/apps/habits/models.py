@@ -41,14 +41,71 @@ class Habit(models.Model):
     def __str__(self):
         return self.name
 
+    def _completed_dates(self):
+        return set(self.checkins.filter(completed=True).values_list("date", flat=True))
+
     def streak(self, today=None):
+        """Streak courant, selon la fréquence de l'habitude.
+
+        - quotidien : jours consécutifs (aujourd'hui non fait ne casse pas
+          encore le streak — il est « en cours » jusqu'à minuit) ;
+        - jours précis : seuls les jours planifiés comptent, les autres sont
+          sautés sans casser la série ;
+        - intervalle « tous les N j » : check-ins consécutifs espacés de ≤ N j ;
+        - hebdo / objectif hebdo : semaines consécutives atteignant l'objectif
+          (la semaine courante, encore en cours, ne casse pas la série).
+        """
         from datetime import date, timedelta
+
         if today is None:
             today = date.today()
+        done = self._completed_dates()
+
+        if self.frequency == self.Frequency.INTERVAL:
+            every = int((self.freq_config or {}).get("every", 1) or 1)
+            dates = sorted(done, reverse=True)
+            if not dates or (today - dates[0]).days > every:
+                return 0
+            streak = 1
+            for prev, cur in zip(dates, dates[1:], strict=False):
+                if (prev - cur).days <= every:
+                    streak += 1
+                else:
+                    break
+            return streak
+
+        if self.frequency in (self.Frequency.WEEKLY, self.Frequency.WEEKLY_GOAL):
+            times = int((self.freq_config or {}).get("times", 1) or 1)
+            week_start = today - timedelta(days=today.weekday())
+            streak = 0
+            # Semaine courante : compte si l'objectif est déjà atteint,
+            # sinon elle est simplement « en cours » (pas de rupture).
+            if sum(1 for d in done if week_start <= d <= today) >= times:
+                streak += 1
+            week_start -= timedelta(days=7)
+            while sum(1 for d in done if week_start <= d < week_start + timedelta(days=7)) >= times:
+                streak += 1
+                week_start -= timedelta(days=7)
+            return streak
+
+        scheduled_days = (self.freq_config or {}).get("days")
+        def is_scheduled(day):
+            return (
+                self.frequency != self.Frequency.SPECIFIC_DAYS
+                or not scheduled_days
+                or day.weekday() in scheduled_days
+            )
+
         streak = 0
         day = today
+        # Aujourd'hui pas encore fait : la série d'hier tient toujours.
+        if is_scheduled(day) and day not in done:
+            day -= timedelta(days=1)
         while True:
-            if self.checkins.filter(date=day, completed=True).exists():
+            if not is_scheduled(day):
+                day -= timedelta(days=1)
+                continue
+            if day in done:
                 streak += 1
                 day -= timedelta(days=1)
             else:
@@ -56,23 +113,59 @@ class Habit(models.Model):
         return streak
 
     def max_streak(self):
+        """Meilleure série historique (mêmes règles de fréquence que streak())."""
         from datetime import timedelta
-        dates = sorted(self.checkins.filter(completed=True).values_list("date", flat=True))
-        if not dates:
+
+        done = sorted(self._completed_dates())
+        if not done:
             return 0
-        max_s = cur = 1
-        for i in range(1, len(dates)):
-            if dates[i] - dates[i-1] == __import__('datetime').timedelta(days=1):
-                cur += 1
+
+        if self.frequency == self.Frequency.INTERVAL:
+            every = int((self.freq_config or {}).get("every", 1) or 1)
+            max_s = cur = 1
+            for prev, nxt in zip(done, done[1:], strict=False):
+                cur = cur + 1 if (nxt - prev).days <= every else 1
                 max_s = max(max_s, cur)
-            else:
-                cur = 1
+            return max_s
+
+        if self.frequency in (self.Frequency.WEEKLY, self.Frequency.WEEKLY_GOAL):
+            times = int((self.freq_config or {}).get("times", 1) or 1)
+            per_week = {}
+            for d in done:
+                per_week[d - timedelta(days=d.weekday())] = per_week.get(d - timedelta(days=d.weekday()), 0) + 1
+            weeks = sorted(w for w, n in per_week.items() if n >= times)
+            max_s = cur = 1 if weeks else 0
+            for prev, nxt in zip(weeks, weeks[1:], strict=False):
+                cur = cur + 1 if (nxt - prev).days == 7 else 1
+                max_s = max(max_s, cur)
+            return max_s
+
+        scheduled_days = (self.freq_config or {}).get("days")
+        if self.frequency == self.Frequency.SPECIFIC_DAYS and scheduled_days:
+            # Deux jours planifiés se suivent s'il n'y a aucun jour planifié
+            # manqué entre eux.
+            max_s = cur = 1
+            for prev, nxt in zip(done, done[1:], strict=False):
+                gap_missed = any(
+                    (prev + timedelta(days=i)).weekday() in scheduled_days
+                    for i in range(1, (nxt - prev).days)
+                )
+                cur = 1 if gap_missed else cur + 1
+                max_s = max(max_s, cur)
+            return max_s
+
+        max_s = cur = 1
+        for prev, nxt in zip(done, done[1:], strict=False):
+            cur = cur + 1 if (nxt - prev).days == 1 else 1
+            max_s = max(max_s, cur)
         return max_s
 
 
 class HabitReminder(models.Model):
     habit = models.ForeignKey(Habit, on_delete=models.CASCADE, related_name="reminders")
     time = models.TimeField()
+    # Idempotence du dispatch : un rappel part au plus une fois par jour.
+    last_sent_on = models.DateField(null=True, blank=True)
 
     class Meta:
         ordering = ["time"]

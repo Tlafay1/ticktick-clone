@@ -111,228 +111,209 @@ class TestM02ListCustomization:
 
 
 class TestM02CustomSmartListsFilterEngine:
-    """Tests for custom smart lists with filter engine."""
+    """Moteur de filtres des smart lists custom (module 2.3).
 
-    def test_boolean_and_or_groups(self, api, user):
+    Une smart list est une liste virtuelle : GET /api/tasks/?project=<id>
+    renvoie les tâches de l'utilisateur qui matchent ses filter_rules.
+    Format des règles = celui produit par l'éditeur web (FilterEditor.vue) :
+    groupes {"type": "and"|"or", "rules": [...]} imbriquables, feuilles
+    {"field", "op", "value"}.
+    """
+
+    def _smart(self, api, rules, name="Smart"):
+        res = api.post(
+            "/api/projects/",
+            {"name": name, "is_smart": True, "filter_rules": rules},
+            format="json",
+        )
+        assert res.status_code == 201, res.data
+        return res.data
+
+    def _task(self, api, project_id, title, **extra):
+        res = api.post(
+            "/api/tasks/", {"project": project_id, "title": title, **extra},
+            format="json",
+        )
+        assert res.status_code == 201, res.data
+        return res.data
+
+    def _titles(self, api, project_id):
+        res = api.get(f"/api/tasks/?project={project_id}")
+        assert res.status_code == 200
+        return {t["title"] for t in res.data}
+
+    def test_boolean_and_or_groups(self, api, inbox):
         """Le filtre combine des règles en groupes AND/OR imbriqués."""
-        # Create a smart list with boolean filters
-        from apps.projects.models import Project
+        self._task(api, inbox.id, "haute-active", priority=5)
+        done = self._task(api, inbox.id, "haute-finie", priority=5)
+        api.post(f"/api/tasks/{done['id']}/complete/")
+        self._task(api, inbox.id, "basse-active", priority=0)
 
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            filter_rules=[
-                {
-                    "type": "and",
-                    "rules": [
-                        {"field": "priority", "operator": "=", "value": 5},
-                        {"field": "status", "operator": "!=", "value": 2}
-                    ]
-                }
-            ]
-        )
+        et = self._smart(api, [{"type": "and", "rules": [
+            {"field": "priority", "op": "eq", "value": 5},
+            {"field": "status", "op": "eq", "value": 0},
+        ]}], name="Et")
+        assert self._titles(api, et["id"]) == {"haute-active"}
 
-        assert project.is_smart is True
-        assert len(project.filter_rules) == 1
-        assert project.filter_rules[0]["type"] == "and"
-        assert len(project.filter_rules[0]["rules"]) == 2
+        # OR contenant un groupe AND imbriqué : prio 0 OU (prio 5 ET terminée).
+        ou = self._smart(api, [{"type": "or", "rules": [
+            {"field": "priority", "op": "eq", "value": 0},
+            {"type": "and", "rules": [
+                {"field": "priority", "op": "eq", "value": 5},
+                {"field": "status", "op": "eq", "value": 2},
+            ]},
+        ]}], name="Ou")
+        assert self._titles(api, ou["id"]) == {"basse-active", "haute-finie"}
 
-    def test_criteria_due_date_ranges(self, api, user):
-        """Critère date : plage absolue, relatif (dans X jours), en retard, sans date."""
-        from apps.projects.models import Project
+    def test_criteria_due_date_ranges(self, api, inbox):
+        """Critère date : relatif (aujourd'hui / 7 jours), en retard, sans date."""
+        from datetime import timedelta
 
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            filter_rules=[
-                {
-                    "field": "due_date",
-                    "operator": "between",
-                    "value": ["2023-01-01", "2023-12-31"]
-                },
-                {
-                    "field": "due_date",
-                    "operator": "in_next",
-                    "value": 7
-                },
-                {
-                    "field": "due_date",
-                    "operator": "overdue"
-                },
-                {
-                    "field": "due_date",
-                    "operator": "is_null"
-                }
-            ]
-        )
+        from django.utils import timezone
 
-        assert project.is_smart is True
-        assert len(project.filter_rules) == 4
+        now = timezone.now()
+        day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        self._task(api, inbox.id, "retard",
+                   due_date=(now - timedelta(days=1)).isoformat())
+        # Fin de journée : toujours « aujourd'hui » et pas encore en retard.
+        self._task(api, inbox.id, "aujourdhui",
+                   due_date=(day + timedelta(days=1) - timedelta(seconds=1)).isoformat())
+        self._task(api, inbox.id, "dans-5-jours",
+                   due_date=(day + timedelta(days=5, hours=12)).isoformat())
+        self._task(api, inbox.id, "sans-date")
 
-    def test_criteria_lists_include_exclude(self, api, user):
-        """Critère listes/dossiers : inclure ou exclure des listes précises."""
-        from apps.projects.models import Project
+        auj = self._smart(api, [{"type": "and", "rules": [
+            {"field": "due", "op": "eq", "value": "today"}]}], name="Auj")
+        assert self._titles(api, auj["id"]) == {"aujourdhui"}
 
-        # Create some projects to reference
-        project1 = Project.objects.create(name="Project 1", user=user)
-        project2 = Project.objects.create(name="Project 2", user=user)
+        retard = self._smart(api, [{"type": "and", "rules": [
+            {"field": "due", "op": "eq", "value": "overdue"}]}], name="Retard")
+        assert self._titles(api, retard["id"]) == {"retard"}
 
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            filter_rules=[
-                {
-                    "field": "list",
-                    "operator": "in",
-                    "value": [project1.id, project2.id]
-                },
-                {
-                    "field": "list",
-                    "operator": "not_in",
-                    "value": [project1.id]
-                }
-            ]
-        )
+        semaine = self._smart(api, [{"type": "and", "rules": [
+            {"field": "due", "op": "eq", "value": "week"}]}], name="Semaine")
+        assert self._titles(api, semaine["id"]) == {"aujourdhui", "dans-5-jours"}
 
-        assert project.is_smart is True
-        assert len(project.filter_rules) == 2
+        sans = self._smart(api, [{"type": "and", "rules": [
+            {"field": "due", "op": "is_null"}]}], name="Sans")
+        assert self._titles(api, sans["id"]) == {"sans-date"}
 
-    def test_criteria_tags_any_all_exclude(self, api, user):
-        """Critère tags : contient l'un, contient tous, exclut."""
-        from apps.tags.models import Tag
-        from apps.projects.models import Project
+    def test_criteria_lists_include_exclude(self, api, inbox):
+        """Critère listes : inclure ou exclure des listes précises."""
+        p1 = api.post("/api/projects/", {"name": "P1"}).data
+        p2 = api.post("/api/projects/", {"name": "P2"}).data
+        self._task(api, p1["id"], "t-p1")
+        self._task(api, p2["id"], "t-p2")
+        self._task(api, inbox.id, "t-inbox")
 
-        # Create some tags
-        tag1 = Tag.objects.create(name="Work", user=user)
-        tag2 = Tag.objects.create(name="Personal", user=user)
+        incl = self._smart(api, [{"type": "and", "rules": [
+            {"field": "project", "op": "in", "value": [p1["id"], p2["id"]]},
+        ]}], name="Incl")
+        assert self._titles(api, incl["id"]) == {"t-p1", "t-p2"}
 
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            filter_rules=[
-                {
-                    "field": "tags",
-                    "operator": "any",
-                    "value": [tag1.id, tag2.id]
-                },
-                {
-                    "field": "tags",
-                    "operator": "all",
-                    "value": [tag1.id]
-                },
-                {
-                    "field": "tags",
-                    "operator": "not_in",
-                    "value": [tag2.id]
-                }
-            ]
-        )
+        excl = self._smart(api, [{"type": "and", "rules": [
+            {"field": "project", "op": "not_in", "value": [p1["id"]]},
+        ]}], name="Excl")
+        assert self._titles(api, excl["id"]) == {"t-p2", "t-inbox"}
 
-        assert project.is_smart is True
-        assert len(project.filter_rules) == 3
+    def test_criteria_tags_any_all_exclude(self, api, inbox):
+        """Critère tags : contient l'un, contient tous, exclut — par id ou nom."""
+        work = api.post("/api/tags/", {"name": "Work"}).data
+        perso = api.post("/api/tags/", {"name": "Perso"}).data
+        self._task(api, inbox.id, "t-work", tags=[work["id"]])
+        self._task(api, inbox.id, "t-perso", tags=[perso["id"]])
+        self._task(api, inbox.id, "t-les-deux", tags=[work["id"], perso["id"]])
+        self._task(api, inbox.id, "t-aucun")
 
-    def test_criteria_priority_eq_gt_lt(self, api, user):
+        l_un = self._smart(api, [{"type": "and", "rules": [
+            {"field": "tag", "op": "in", "value": [work["id"], perso["id"]]},
+        ]}], name="Un")
+        assert self._titles(api, l_un["id"]) == {"t-work", "t-perso", "t-les-deux"}
+
+        tous = self._smart(api, [{"type": "and", "rules": [
+            {"field": "tag", "op": "all", "value": [work["id"], perso["id"]]},
+        ]}], name="Tous")
+        assert self._titles(api, tous["id"]) == {"t-les-deux"}
+
+        exclut = self._smart(api, [{"type": "and", "rules": [
+            {"field": "tag", "op": "not_in", "value": [perso["id"]]},
+        ]}], name="Exclut")
+        assert self._titles(api, exclut["id"]) == {"t-work", "t-aucun"}
+
+        # Saisie libre de l'éditeur : par nom.
+        par_nom = self._smart(api, [{"type": "and", "rules": [
+            {"field": "tag", "op": "eq", "value": "Work"},
+        ]}], name="Nom")
+        assert self._titles(api, par_nom["id"]) == {"t-work", "t-les-deux"}
+
+    def test_criteria_priority_eq_gt_lt(self, api, inbox):
         """Critère priorité : égal / supérieur / inférieur."""
-        from apps.projects.models import Project
+        for prio in (0, 1, 3, 5):
+            self._task(api, inbox.id, f"p{prio}", priority=prio)
 
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            filter_rules=[
-                {
-                    "field": "priority",
-                    "operator": "=",
-                    "value": 5
-                },
-                {
-                    "field": "priority",
-                    "operator": ">",
-                    "value": 3
-                },
-                {
-                    "field": "priority",
-                    "operator": "<",
-                    "value": 2
-                }
-            ]
-        )
+        egal = self._smart(api, [{"type": "and", "rules": [
+            {"field": "priority", "op": "eq", "value": 5}]}], name="Egal")
+        assert self._titles(api, egal["id"]) == {"p5"}
 
-        assert project.is_smart is True
-        assert len(project.filter_rules) == 3
+        sup = self._smart(api, [{"type": "and", "rules": [
+            {"field": "priority", "op": "gt", "value": 1}]}], name="Sup")
+        assert self._titles(api, sup["id"]) == {"p3", "p5"}
 
-    def test_criteria_status_completed_uncompleted(self, api, user):
+        inf = self._smart(api, [{"type": "and", "rules": [
+            {"field": "priority", "op": "lt", "value": 3}]}], name="Inf")
+        assert self._titles(api, inf["id"]) == {"p0", "p1"}
+
+    def test_criteria_status_completed_uncompleted(self, api, inbox):
         """Critère statut : terminé / non terminé."""
-        from apps.projects.models import Project
+        faite = self._task(api, inbox.id, "faite")
+        api.post(f"/api/tasks/{faite['id']}/complete/")
+        self._task(api, inbox.id, "en-cours")
 
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            filter_rules=[
-                {
-                    "field": "status",
-                    "operator": "=",
-                    "value": 2  # completed
-                },
-                {
-                    "field": "status",
-                    "operator": "!=",
-                    "value": 2  # not completed
-                }
-            ]
-        )
+        terminees = self._smart(api, [{"type": "and", "rules": [
+            {"field": "status", "op": "eq", "value": 2}]}], name="Done")
+        assert self._titles(api, terminees["id"]) == {"faite"}
 
-        assert project.is_smart is True
-        assert len(project.filter_rules) == 2
+        actives = self._smart(api, [{"type": "and", "rules": [
+            {"field": "status", "op": "neq", "value": 2}]}], name="Actives")
+        assert self._titles(api, actives["id"]) == {"en-cours"}
 
-    def test_saved_grouping_and_sorting_per_smartlist(self, api, user):
+    def test_saved_grouping_and_sorting_per_smartlist(self, api):
         """Chaque smart list mémorise son groupement et son tri."""
-        from apps.projects.models import Project
-
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            grouping="priority",
-            sorting="due_date"
+        smart = self._smart(api, [])
+        res = api.patch(
+            f"/api/projects/{smart['id']}/",
+            {"grouping": "priority", "sorting": "due_date"},
+            format="json",
         )
+        assert res.status_code == 200, res.data
+        fresh = api.get(f"/api/projects/{smart['id']}/").data
+        assert fresh["grouping"] == "priority"
+        assert fresh["sorting"] == "due_date"
 
-        assert project.is_smart is True
-        assert project.grouping == "priority"
-        assert project.sorting == "due_date"
-
-    def test_hidden_list_excluded_unless_explicitly_targeted(self, api, user):
+    def test_hidden_list_excluded_unless_explicitly_targeted(self, api, inbox):
         """Une liste `hidden_from_smart_lists` n'agrège pas, sauf si ciblée en inclusion."""
-        from apps.projects.models import Project
+        hidden = api.post(
+            "/api/projects/",
+            {"name": "Cachée", "hidden_from_smart_lists": True},
+            format="json",
+        ).data
+        self._task(api, hidden["id"], "t-cachee", priority=5)
+        self._task(api, inbox.id, "t-visible", priority=5)
 
-        # Create a hidden project
-        hidden_project = Project.objects.create(
-            name="Hidden Project",
-            user=user,
-            hidden_from_smart_lists=True
-        )
+        prio = self._smart(api, [{"type": "and", "rules": [
+            {"field": "priority", "op": "eq", "value": 5}]}], name="Prio")
+        assert self._titles(api, prio["id"]) == {"t-visible"}
 
-        # Create a smart list that should exclude this hidden project by default
-        project = Project.objects.create(
-            name="Test Smart List",
-            user=user,
-            is_smart=True,
-            filter_rules=[
-                {
-                    "field": "list",
-                    "operator": "not_in",
-                    "value": [hidden_project.id]
-                }
-            ]
-        )
+        ciblee = self._smart(api, [{"type": "and", "rules": [
+            {"field": "project", "op": "eq", "value": hidden["id"]}]}], name="Ciblee")
+        assert self._titles(api, ciblee["id"]) == {"t-cachee"}
 
-        assert project.is_smart is True
-        assert hidden_project.hidden_from_smart_lists is True
+    def test_normal_list_project_param_still_filters_by_fk(self, api, inbox):
+        """Garde-fou : ?project=<liste normale> filtre toujours par FK."""
+        p = api.post("/api/projects/", {"name": "Normale"}).data
+        self._task(api, p["id"], "dans-p")
+        self._task(api, inbox.id, "dans-inbox")
+        assert self._titles(api, p["id"]) == {"dans-p"}
 
 
 class TestM03NestedTags:
@@ -606,3 +587,20 @@ class TestM01ActivityLog:
         api.post(f"/api/tasks/{task['id']}/complete/")
         logs = api.get(f"/api/tasks/{task['id']}/activity/").json()
         assert any(entry["action"] == "status_changed" for entry in logs)
+
+    def test_specific_dates_rdate_advances_through_list(self, api, inbox):
+        """« Dates spécifiques » : RDATE:… — compléter avance à la date suivante
+        de la liste, puis la récurrence s'épuise après la dernière."""
+        t = api.post("/api/tasks/", {
+            "project": inbox.id, "title": "T",
+            "rrule": "RDATE:20990801T000000,20990915T000000",
+            "due_date": "2099-08-01T00:00:00Z",
+        }).json()
+        result = api.post(f"/api/tasks/{t['id']}/complete/").json()
+        # Avance au 15/09 (même tâche, rouverte)
+        assert result["id"] == t["id"]
+        assert result["status"] == 0
+        assert result["due_date"].startswith("2099-09-15")
+        # Dernière date de la liste : compléter termine pour de bon.
+        final = api.post(f"/api/tasks/{t['id']}/complete/").json()
+        assert final["status"] == 2

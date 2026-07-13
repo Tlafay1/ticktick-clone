@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import Sidebar from '@/components/Sidebar.vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 import TaskContextMenu from '@/components/TaskContextMenu.vue'
-import { tasksApi } from '@/api'
+import { tasksApi, calendarsApi, type CalendarEvent } from '@/api'
 import { useTaskStore } from '@/stores/tasks'
 import { useProjectStore } from '@/stores/projects'
 import { useTagStore } from '@/stores/tags'
+import { useUserStore } from '@/stores/user'
 import type { Task } from '@/types'
 import {
   startOfWeek, endOfWeek, startOfMonth, endOfMonth,
@@ -15,7 +17,7 @@ import {
 } from 'date-fns'
 import { fr } from 'date-fns/locale'
 
-type ViewMode = 'week' | 'month' | 'agenda'
+type ViewMode = 'day' | 'week' | 'month' | 'agenda'
 
 const viewMode = ref<ViewMode>('week')
 const pivot = ref(new Date())   // semaine ou mois courant
@@ -24,33 +26,78 @@ const loading = ref(false)
 const taskStore = useTaskStore()
 const projectStore = useProjectStore()
 const tagStore = useTagStore()
+const userStore = useUserStore()
+
+// Premier jour de semaine des réglages (0=dim, 1=lun, 6=sam) — comme TickTick.
+const weekStartsOn = computed<0 | 1 | 6>(() => {
+  const v = userStore.user?.settings?.week_start ?? 1
+  return (v === 0 || v === 6 ? v : 1)
+})
 
 // ── Chargement ──────────────────────────────────────────────────────────────
 async function loadTasks() {
   loading.value = true
-  const start = viewMode.value === 'week'
-    ? startOfWeek(pivot.value, { weekStartsOn: 1 })
-    : startOfMonth(pivot.value)
-  const end = viewMode.value === 'week'
-    ? endOfWeek(pivot.value, { weekStartsOn: 1 })
-    : endOfMonth(pivot.value)
+  // L'agenda affiche 30 jours glissants depuis aujourd'hui : charger cette
+  // plage (et non le mois du pivot, qui tronquait la fin de mois).
+  const start = viewMode.value === 'agenda'
+    ? startOfDay(new Date())
+    : viewMode.value === 'day'
+      ? startOfDay(pivot.value)
+      : viewMode.value === 'week'
+        ? startOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
+        : startOfMonth(pivot.value)
+  const end = viewMode.value === 'agenda'
+    ? addDays(startOfDay(new Date()), 30)
+    : viewMode.value === 'day'
+      ? startOfDay(pivot.value)
+      : viewMode.value === 'week'
+        ? endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value })
+        : endOfMonth(pivot.value)
 
-  allTasks.value = await tasksApi.list({
-    due_after: startOfDay(addDays(start, -1)).toISOString(),
-    due_before: endOfWeek(end, { weekStartsOn: 1 }).toISOString(),
-    status: 0,
-  })
+  const rangeStart = startOfDay(addDays(start, -1)).toISOString()
+  const rangeEnd = endOfWeek(end, { weekStartsOn: weekStartsOn.value }).toISOString()
+  // scheduled_* = start_date si défini, sinon due_date : sans quoi une tâche
+  // planifiée par drag (start_date seul) disparaissait au rechargement.
+  ;[allTasks.value, icsEvents.value] = await Promise.all([
+    tasksApi.list({ scheduled_after: rangeStart, scheduled_before: rangeEnd, status: 0 }),
+    calendarsApi.events({ start: rangeStart, end: rangeEnd }).catch(() => []),
+  ])
   taskStore.tasks = allTasks.value
   loading.value = false
 }
 
+// ── Événements ICS (lecture seule) ──────────────────────────────────────────
+const icsEvents = ref<CalendarEvent[]>([])
+
+function icsOnDay(day: Date, allDay: boolean) {
+  return icsEvents.value.filter(
+    (e) => e.is_all_day === allDay && isSameDay(parseISO(e.start), day)
+  )
+}
+
+function icsEventHour(e: CalendarEvent) {
+  return new Date(e.start).getHours()
+}
+
+// Deep-link ?date=YYYY-MM-DD (mini-calendrier de la sidebar) : centre la vue.
+const route = useRoute()
+
+function applyRouteDate() {
+  const q = route.query.date
+  if (typeof q === 'string' && !Number.isNaN(Date.parse(`${q}T00:00:00`))) {
+    pivot.value = new Date(`${q}T00:00:00`)
+  }
+}
+
 onMounted(async () => {
+  applyRouteDate()
   await loadTasks()
   if (!projectStore.projects.length) await projectStore.load()
   if (!tagStore.tags.length) await tagStore.load()
   await loadSideTasks()
 })
 watch([viewMode, pivot], loadTasks)
+watch(() => route.query.date, applyRouteDate)
 
 // Rafraîchir quand l'utilisateur ferme le panneau de détail (tâche possiblement modifiée)
 watch(() => taskStore.selectedId, (newId, oldId) => {
@@ -59,19 +106,28 @@ watch(() => taskStore.selectedId, (newId, oldId) => {
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 function prev() {
-  pivot.value = viewMode.value === 'week' ? subWeeks(pivot.value, 1) : subMonths(pivot.value, 1)
+  pivot.value = viewMode.value === 'day'
+    ? addDays(pivot.value, -1)
+    : viewMode.value === 'week' ? subWeeks(pivot.value, 1) : subMonths(pivot.value, 1)
 }
 function next() {
-  pivot.value = viewMode.value === 'week' ? addWeeks(pivot.value, 1) : addMonths(pivot.value, 1)
+  pivot.value = viewMode.value === 'day'
+    ? addDays(pivot.value, 1)
+    : viewMode.value === 'week' ? addWeeks(pivot.value, 1) : addMonths(pivot.value, 1)
 }
 function goToday() { pivot.value = new Date() }
 
 // ── Vue semaine ──────────────────────────────────────────────────────────────
 const weekDays = computed(() =>
   eachDayOfInterval({
-    start: startOfWeek(pivot.value, { weekStartsOn: 1 }),
-    end: endOfWeek(pivot.value, { weekStartsOn: 1 }),
+    start: startOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value }),
+    end: endOfWeek(pivot.value, { weekStartsOn: weekStartsOn.value }),
   })
+)
+
+// Jours affichés dans la grille horaire : 1 (vue Jour) ou 7 (vue Semaine).
+const gridDays = computed(() =>
+  viewMode.value === 'day' ? [startOfDay(pivot.value)] : weekDays.value
 )
 
 // M19 — bascule moderne / classique
@@ -164,8 +220,8 @@ function multiDayBarStyle(t: Task) {
 
 // ── Vue mois ─────────────────────────────────────────────────────────────────
 const monthGrid = computed(() => {
-  const start = startOfWeek(startOfMonth(pivot.value), { weekStartsOn: 1 })
-  const end = endOfWeek(endOfMonth(pivot.value), { weekStartsOn: 1 })
+  const start = startOfWeek(startOfMonth(pivot.value), { weekStartsOn: weekStartsOn.value })
+  const end = endOfWeek(endOfMonth(pivot.value), { weekStartsOn: weekStartsOn.value })
   return eachDayOfInterval({ start, end })
 })
 
@@ -236,6 +292,9 @@ async function createOnDay() {
 
 // ── Label titre ──────────────────────────────────────────────────────────────
 const headerLabel = computed(() => {
+  if (viewMode.value === 'day') {
+    return format(pivot.value, 'EEEE d MMMM yyyy', { locale: fr })
+  }
   if (viewMode.value === 'week') {
     const ws = weekDays.value[0]
     const we = weekDays.value[6]
@@ -390,10 +449,10 @@ async function onCtxClose() {
           <span class="cal-label">{{ headerLabel }}</span>
         </div>
         <div class="view-tabs">
-          <button v-for="v in ['week','month','agenda']" :key="v" class="view-tab" :class="{ active: viewMode === v }" @click="viewMode = v as ViewMode">
-            {{ v === 'week' ? 'Semaine' : v === 'month' ? 'Mois' : 'Agenda' }}
+          <button v-for="v in ['day','week','month','agenda']" :key="v" class="view-tab" :class="{ active: viewMode === v }" @click="viewMode = v as ViewMode">
+            {{ v === 'day' ? 'Jour' : v === 'week' ? 'Semaine' : v === 'month' ? 'Mois' : 'Agenda' }}
           </button>
-          <button v-if="viewMode === 'week'" class="view-tab" :class="{ active: showTimeMask }" @click="showTimeMask = !showTimeMask" title="Masquer les plages horaires">⏱</button>
+          <button v-if="viewMode === 'week' || viewMode === 'day'" class="view-tab" :class="{ active: showTimeMask }" @click="showTimeMask = !showTimeMask" title="Masquer les plages horaires">⏱</button>
           <button class="view-tab" :class="{ active: calMode === 'classic' }" @click="calMode = calMode === 'modern' ? 'classic' : 'modern'" title="Calendrier classique / moderne">
             {{ calMode === 'classic' ? 'Classique' : 'Moderne' }}
           </button>
@@ -404,7 +463,7 @@ async function onCtxClose() {
       </div>
 
       <!-- M30 — slider de masquage des plages horaires -->
-      <div v-if="showTimeMask && viewMode === 'week'" class="time-mask-bar">
+      <div v-if="showTimeMask && (viewMode === 'week' || viewMode === 'day')" class="time-mask-bar">
         <span class="time-mask-label">Début : {{ String(maskStart).padStart(2,'0') }}:00</span>
         <input type="range" min="0" max="23" step="1" v-model.number="maskStart" class="time-mask-slider" />
         <input type="range" min="1" max="24" step="1" v-model.number="maskEnd"   class="time-mask-slider" />
@@ -412,13 +471,13 @@ async function onCtxClose() {
         <button @click="maskStart = 0; maskEnd = 24" class="time-mask-reset">Réinitialiser</button>
       </div>
 
-      <!-- Vue SEMAINE ─────────────────────────────────────────────────── -->
-      <div v-if="viewMode === 'week'" class="week-view" :class="`cal-${calMode}`" :style="`--hour-px: ${HOUR_PX}px`">
+      <!-- Vues JOUR & SEMAINE (même grille horaire) ─────────────────────── -->
+      <div v-if="viewMode === 'week' || viewMode === 'day'" class="week-view" :class="`cal-${calMode}`" :style="`--hour-px: ${HOUR_PX}px; --day-cols: ${gridDays.length}`">
         <!-- En-tête des jours -->
         <div class="week-header">
           <div class="time-gutter" />
           <div
-            v-for="day in weekDays"
+            v-for="day in gridDays"
             :key="day.toISOString()"
             class="week-day-head"
             :class="{ today: isToday(day) }"
@@ -429,7 +488,7 @@ async function onCtxClose() {
         </div>
 
         <!-- Ligne multi-jours (M4) -->
-        <div v-if="multiDayTasksInWeek().length" class="multiday-row">
+        <div v-if="viewMode === 'week' && multiDayTasksInWeek().length" class="multiday-row">
           <div class="time-gutter multiday-label">Multi-jours</div>
           <div
             v-for="t in multiDayTasksInWeek()"
@@ -445,7 +504,7 @@ async function onCtxClose() {
         <div class="allday-row">
           <div class="time-gutter allday-label">Toute la journée</div>
           <div
-            v-for="day in weekDays"
+            v-for="day in gridDays"
             :key="day.toISOString()"
             class="allday-cell"
             :class="{ 'drag-over': overDayKey === day.toISOString() }"
@@ -464,6 +523,15 @@ async function onCtxClose() {
               @click.stop="openTask(t)"
               @contextmenu.stop.prevent="onTaskCtx($event, t)"
             >{{ t.title }}</div>
+            <!-- Événements ICS journée entière (lecture seule) -->
+            <div
+              v-for="e in icsOnDay(day, true)"
+              :key="`ics-${e.id}`"
+              class="cal-task all-day ics-event"
+              :style="e.color ? `border-left-color: ${e.color}` : ''"
+              :title="`${e.calendar_name}${e.location ? ' · ' + e.location : ''}`"
+              @click.stop
+            >{{ e.title }}</div>
           </div>
         </div>
 
@@ -479,7 +547,7 @@ async function onCtxClose() {
             <div v-for="h in HOURS" :key="h" class="hour-row">
               <div class="time-gutter">{{ h === 0 ? '' : `${String(h).padStart(2,'0')}:00` }}</div>
               <div
-                v-for="day in weekDays"
+                v-for="day in gridDays"
                 :key="day.toISOString()"
                 class="hour-cell"
                 :class="{ today: isToday(day), 'drag-over': overDayKey === `${day.toISOString()}-${h}` }"
@@ -516,6 +584,15 @@ async function onCtxClose() {
                   @click.stop="openTask(t)"
                   @contextmenu.stop.prevent="onTaskCtx($event, t)"
                 >{{ t.title }}</div>
+                <!-- Événements ICS horaires (lecture seule) -->
+                <div
+                  v-for="e in icsOnDay(day, false).filter(e => icsEventHour(e) === h)"
+                  :key="`ics-${e.id}`"
+                  class="cal-task timed ics-event"
+                  :style="e.color ? `border-left-color: ${e.color}` : ''"
+                  :title="`${e.calendar_name}${e.location ? ' · ' + e.location : ''}`"
+                  @click.stop
+                >{{ format(parseISO(e.start), 'HH:mm') }} {{ e.title }}</div>
               </div>
             </div>
           </div>
@@ -550,6 +627,14 @@ async function onCtxClose() {
                 @click.stop="openTask(t)"
                 @contextmenu.stop.prevent="onTaskCtx($event, t)"
               >{{ t.title }}</div>
+              <div
+                v-for="e in [...icsOnDay(day, true), ...icsOnDay(day, false)].slice(0, 2)"
+                :key="`ics-${e.id}`"
+                class="month-task ics-event"
+                :style="e.color ? `background: ${e.color}22; color: ${e.color}` : ''"
+                :title="e.calendar_name"
+                @click.stop
+              >{{ e.title }}</div>
               <div v-if="tasksOnDay(day).length > 3" class="month-more">+{{ tasksOnDay(day).length - 3 }}</div>
             </div>
           </div>
@@ -576,6 +661,16 @@ async function onCtxClose() {
             >
               <span class="agenda-time" v-if="!t.is_all_day && t.due_date">{{ format(parseISO(t.due_date), 'HH:mm') }}</span>
               <span class="agenda-title">{{ t.title }}</span>
+            </div>
+            <div
+              v-for="e in [...icsOnDay(date, true), ...icsOnDay(date, false)]"
+              :key="`ics-${e.id}`"
+              class="agenda-task ics-event"
+              :style="e.color ? `border-left-color: ${e.color}` : ''"
+              :title="e.calendar_name"
+            >
+              <span class="agenda-time" v-if="!e.is_all_day">{{ format(parseISO(e.start), 'HH:mm') }}</span>
+              <span class="agenda-title">{{ e.title }}</span>
             </div>
             <button class="agenda-add" @click="startCreate(date)">＋ Ajouter</button>
           </div>
@@ -684,7 +779,7 @@ async function onCtxClose() {
       </div>
     </div>
 
-    <TaskDetail v-if="taskStore.selectedId" class="cal-detail" />
+    <TaskDetail v-if="taskStore.selected()" class="cal-detail" />
     <TaskContextMenu
       v-if="contextMenu"
       :task="contextMenu.task"
@@ -739,7 +834,7 @@ async function onCtxClose() {
 
 .week-header {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -755,7 +850,7 @@ async function onCtxClose() {
 
 .allday-row {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   border-bottom: 2px solid var(--border);
   flex-shrink: 0;
   min-height: 28px;
@@ -769,12 +864,19 @@ async function onCtxClose() {
 
 .hour-row {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   min-height: var(--hour-px, 40px);
 }
 
 /* Mode classique : plus d'espace, police plus grande */
 .cal-classic .cal-task { font-size: 12.5px; padding: 3px 6px; }
+
+/* Événements ICS : lecture seule, teinte douce distincte des tâches */
+.ics-event {
+  cursor: default;
+  opacity: 0.85;
+  font-style: italic;
+}
 .cal-classic .time-gutter { font-size: 11px; }
 /* Mode moderne : compact */
 .cal-modern .cal-task { font-size: 11px; }
@@ -829,7 +931,7 @@ async function onCtxClose() {
 /* ── Multi-jours ───────────────────────────────────────── */
 .multiday-row {
   display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
+  grid-template-columns: 52px repeat(var(--day-cols, 7), 1fr);
   border-bottom: 1px solid var(--border);
   min-height: 26px;
   align-items: center;

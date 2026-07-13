@@ -6,11 +6,13 @@ const TASK: Task = {
   id: 1, project: 1, section: null, parent: null,
   title: 'Acheter du pain', description: '', status: 0, priority: 3,
   progress: 0, is_pinned: false, pinned_at: null,
-  start_date: null, due_date: '2026-06-15T00:00:00Z', is_all_day: true,
+  start_date: null, due_date: '2026-06-15T00:00:00Z', planned_date: null, end_date: null,
+  is_all_day: true,
   timezone_name: 'Europe/Paris', rrule: '', repeat_from: 'due',
   tags: [1, 2], sort_order: 1000, estimated_pomos: 0, completed_at: null, trashed_at: null,
+  archived_at: null,
   created_at: '2026-06-01T00:00:00Z', modified_at: '2026-06-01T00:00:00Z',
-  check_items: [],
+  check_items: [], reminders: [],
 }
 
 describe('tasksToCSV', () => {

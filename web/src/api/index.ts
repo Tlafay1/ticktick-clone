@@ -20,7 +20,7 @@ import type {
   User,
   UserSettings,
 } from '@/types'
-import { http, qs, tokens } from './client'
+import { http, qs, tokens, apiUrl } from './client'
 
 export const authApi = {
   async register(email: string, password: string, displayName = '') {
@@ -76,11 +76,13 @@ export const tasksApi = {
   restore: (id: number) => http.post<Task>(`/api/tasks/${id}/restore/`),
   duplicate: (id: number) => http.post<Task>(`/api/tasks/${id}/duplicate/`),
   emptyTrash: () => http.post('/api/tasks/empty-trash/'),
+  searchHistory: () => http.get<Array<{ id: number; query: string; created_at: string }>>('/api/search-history/'),
+  clearSearchHistory: () => http.delete('/api/search-history/clear/'),
   activity: (id: number) => http.get<ActivityEntry[]>(`/api/tasks/${id}/activity/`),
   importFile: async (file: File, dedupe = false) => {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`/api/tasks/import/${dedupe ? '?dedupe=1' : ''}`, {
+    const res = await fetch(apiUrl(`/api/tasks/import/${dedupe ? '?dedupe=1' : ''}`), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: fd,
@@ -135,7 +137,7 @@ export const focusApi = {
   list: () => http.get<FocusSession[]>('/api/focus-sessions/'),
   create: (data: Partial<FocusSession>) => http.post<FocusSession>('/api/focus-sessions/', data),
   update: (id: number, data: Partial<FocusSession>) => http.patch<FocusSession>(`/api/focus-sessions/${id}/`, data),
-  stats: () => http.get<{ total_seconds: number; by_list: unknown[]; by_tag: unknown[] }>('/api/focus-sessions/stats/'),
+  stats: () => http.get<{ total_seconds: number; by_list: Record<string, number>; by_tag: Record<string, number> }>('/api/focus-sessions/stats/'),
 }
 
 export const countdownApi = {
@@ -151,7 +153,7 @@ export const attachmentsApi = {
     const fd = new FormData()
     fd.append('task', String(taskId))
     fd.append('file', file)
-    const res = await fetch('/api/attachments/', {
+    const res = await fetch(apiUrl('/api/attachments/'), {
       method: 'POST',
       headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
       body: fd,
@@ -165,7 +167,8 @@ export const attachmentsApi = {
 export const versionsApi = {
   list: (taskId: number) => http.get<TaskVersion[]>(`/api/tasks/${taskId}/versions/`),
   restore: (taskId: number, versionId: number) =>
-    http.post<Task>(`/api/tasks/${taskId}/versions/${versionId}/restore/`),
+    // Contrat backend : action « restore-version » avec version_id en body.
+    http.post<Task>(`/api/tasks/${taskId}/restore-version/`, { version_id: versionId }),
 }
 
 export const statsApi = {
@@ -197,4 +200,61 @@ export const apiKeysApi = {
   list: () => http.get<ApiKeyInfo[]>('/api/api-keys/'),
   create: (label = '') => http.post<ApiKeyInfo>('/api/api-keys/', { label }),
   remove: (id: number) => http.delete(`/api/api-keys/${id}/`),
+}
+
+export interface CalendarSubscription {
+  id: number
+  name: string
+  url: string
+  color: string
+  is_visible: boolean
+  created_at: string
+  last_synced_at: string | null
+}
+
+export interface CalendarEvent {
+  id: number
+  subscription: number
+  calendar_name: string
+  color: string
+  uid: string
+  title: string
+  location: string
+  start: string
+  end: string | null
+  is_all_day: boolean
+}
+
+export const calendarsApi = {
+  list: () => http.get<CalendarSubscription[]>('/api/calendar-subscriptions/'),
+  create: (data: { name: string; url: string; color?: string }) =>
+    http.post<CalendarSubscription>('/api/calendar-subscriptions/', data),
+  update: (id: number, data: Partial<CalendarSubscription>) =>
+    http.patch<CalendarSubscription>(`/api/calendar-subscriptions/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/calendar-subscriptions/${id}/`),
+  refresh: (id: number) =>
+    http.post<{ imported: number }>(`/api/calendar-subscriptions/${id}/refresh/`, {}),
+  events: (params: { start?: string; end?: string } = {}) =>
+    http.get<CalendarEvent[]>(`/api/calendar-events/${qs(params)}`),
+}
+
+export interface Webhook {
+  id: number
+  url: string
+  events: string[]
+  secret: string
+  is_active: boolean
+  created_at: string
+  last_triggered_at: string | null
+}
+
+export const webhooksApi = {
+  list: () => http.get<Webhook[]>('/api/webhooks/'),
+  events: () => http.get<{ events: string[] }>('/api/webhooks/events/'),
+  create: (url: string, events: string[]) =>
+    http.post<Webhook>('/api/webhooks/', { url, events }),
+  update: (id: number, data: Partial<Webhook>) =>
+    http.patch<Webhook>(`/api/webhooks/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/webhooks/${id}/`),
+  ping: (id: number) => http.post<{ detail: string }>(`/api/webhooks/${id}/ping/`, {}),
 }

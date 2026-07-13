@@ -135,23 +135,57 @@ class TestM16Duration:
 
 class TestM04IcsSubscription:
 
-    def test_subscribe_ics_url_parses_events(self, api):
+    ICS = (
+        "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//spec//FR\n"
+        "BEGIN:VEVENT\nUID:ev-1\nSUMMARY:Conf\n"
+        "DTSTART:20260720T090000Z\nDTEND:20260720T100000Z\nEND:VEVENT\n"
+        "END:VCALENDAR\n"
+    )
+
+    class _Resp:
+        status_code = 200
+        content = b""
+
+        def raise_for_status(self):
+            pass
+
+    def _mock_feed(self, monkeypatch):
+        resp = self._Resp()
+        resp.content = self.ICS.encode()
+        monkeypatch.setattr("requests.get", lambda url, timeout: resp)
+
+    def test_subscribe_ics_url_parses_events(self, api, monkeypatch):
         """Abonner une URL .ics importe ses événements en lecture seule."""
+        self._mock_feed(monkeypatch)
         sub = api.post("/api/calendar-subscriptions/", {
             "name": "Vacances", "url": "https://example.com/cal.ics",
         }).json()
         assert sub["name"] == "Vacances"
-        assert sub["url"] == "https://example.com/cal.ics"
         assert sub["is_visible"] is True
 
-    def test_external_events_toggle_visibility(self, api):
+        # Import (action refresh synchrone) puis lecture des événements.
+        refreshed = api.post(f"/api/calendar-subscriptions/{sub['id']}/refresh/")
+        assert refreshed.status_code == 200
+        assert refreshed.json()["imported"] == 1
+        events = api.get("/api/calendar-events/").json()
+        assert [e["title"] for e in events] == ["Conf"]
+        # Lecture seule : aucune écriture d'événement par l'API.
+        assert api.post("/api/calendar-events/", {"title": "X"}).status_code == 405
+
+    def test_external_events_toggle_visibility(self, api, monkeypatch):
         """On peut afficher/masquer les événements d'un calendrier externe."""
+        self._mock_feed(monkeypatch)
         sub = api.post("/api/calendar-subscriptions/", {
             "name": "Pro", "url": "https://example.com/pro.ics",
         }).json()
+        api.post(f"/api/calendar-subscriptions/{sub['id']}/refresh/")
+        assert len(api.get("/api/calendar-events/").json()) == 1
+
         patch = api.patch(f"/api/calendar-subscriptions/{sub['id']}/", {"is_visible": False})
         assert patch.status_code == 200
         assert patch.json()["is_visible"] is False
+        # Masqué → ses événements disparaissent du flux calendrier.
+        assert api.get("/api/calendar-events/").json() == []
 
 
 class TestM05Kanban:
@@ -269,13 +303,19 @@ class TestM19YearViewHeatmap:
 
     def test_year_grid_completion_density(self, api, inbox):
         """Endpoint heatmap renvoie nb tâches terminées par jour pour une année."""
+        from django.utils import timezone
         api.post("/api/tasks/", {"project": inbox.id, "title": "T1"})
         task = api.post("/api/tasks/", {"project": inbox.id, "title": "T2"}).json()
         api.post(f"/api/tasks/{task['id']}/complete/")
-        resp = api.get("/api/stats/heatmap/?year=2026")
+        today = timezone.now().date()
+        resp = api.get(f"/api/stats/heatmap/?year={today.year}")
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, dict)
+        # Contrat consommé par le web (StatsView) : liste [{date, count}].
+        assert isinstance(data, list)
+        entry = next((d for d in data if d["date"] == today.isoformat()), None)
+        assert entry is not None
+        assert entry["count"] == 1  # seule T2 est terminée
 
     def test_click_day_shows_completed_tasks_popover(self, api, inbox):
         """Filtre completed_after/before permet de récupérer les tâches du jour."""

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useTaskStore } from '@/stores/tasks'
 import { useTagStore } from '@/stores/tags'
+import { useProjectStore } from '@/stores/projects'
+import Icon from './Icon.vue'
 import { checkItemsApi, commentsApi, tasksApi } from '@/api'
 import type { CheckItem, Comment, ActivityEntry, Task } from '@/types'
 import { renderMarkdown, toggleMarkdownCheckbox } from '@/lib/markdown'
-import { toLocalInput } from '@/lib/dates'
+import { toLocalInput, dueLabel } from '@/lib/dates'
 import RecurrenceEditor from './RecurrenceEditor.vue'
 import ReminderEditor from './ReminderEditor.vue'
 import AttachmentsPanel from './AttachmentsPanel.vue'
@@ -34,6 +36,26 @@ const showRecurrence = ref(false)
 const showReminders = ref(false)
 const showActivity = ref(false)
 const activity = ref<ActivityEntry[]>([])
+
+// Popovers façon TickTick : date/priorité en haut, tags/liste en bas.
+type PopoverKind = 'date' | 'priority' | 'tags' | 'move'
+const popover = ref<PopoverKind | null>(null)
+const showMore = ref(false)
+function togglePopover(p: PopoverKind) {
+  popover.value = popover.value === p ? null : p
+}
+watch(task, () => { popover.value = null; showMore.value = false })
+
+const projectStore = useProjectStore()
+const currentProjectName = computed(() =>
+  projectStore.projects.find((p) => p.id === task.value?.project)?.name ?? 'Liste'
+)
+
+async function moveToProject(projectId: number) {
+  if (!task.value) return
+  await taskStore.moveTo(task.value.id, projectId)
+  popover.value = null
+}
 
 watch(task, async (t) => {
   if (t) {
@@ -167,9 +189,14 @@ async function createAndAddTag() {
   newTagName.value = ''
 }
 
+const subtaskInput = ref<HTMLInputElement>()
+function focusSubtaskInput() { subtaskInput.value?.focus() }
+
 onMounted(async () => {
+  window.addEventListener('tt:focus-subtask', focusSubtaskInput)
   if (!tagStore.tags.length) await tagStore.load()
 })
+onUnmounted(() => window.removeEventListener('tt:focus-subtask', focusSubtaskInput))
 
 async function postComment() {
   if (!task.value || !newComment.value.trim()) return
@@ -218,6 +245,15 @@ function priorityColor(p: number) {
   return priorityOptions.find((x) => x.value === p)?.color ?? 'var(--prio-none)'
 }
 
+function priorityLabel(p: number) {
+  return priorityOptions.find((x) => x.value === p)?.label.replace(/^\S+\s/, '') ?? 'Priorité'
+}
+
+const dueSummary = computed(() => {
+  if (!task.value?.due_date) return 'Date'
+  return dueLabel(task.value.due_date, task.value.is_all_day)
+})
+
 function formatCommentDate(iso: string) {
   return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
@@ -225,310 +261,176 @@ function formatCommentDate(iso: string) {
 
 <template>
   <aside v-if="task" class="detail-panel">
-    <!-- En-tête -->
-    <div class="detail-header">
-      <button class="close-btn icon-btn" @click="taskStore.select(null)">✕</button>
+    <!-- Barre supérieure : complétion + date + drapeau + épingle + fermer -->
+    <div class="dp-top">
+      <button
+        class="task-checkbox dp-check"
+        :class="[`p${task.priority}`, { checked: task.status === 2, wontdo: task.status === -1 }]"
+        :title="task.status === 0 ? 'Terminer' : 'Rouvrir'"
+        @click="task.status === 0 ? taskStore.complete(task.id) : taskStore.reopen(task.id)"
+      >
+        <svg v-if="task.status !== 0" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L3.8 7.5L8.5 2.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <span class="dp-top-sep" />
+      <button class="dp-tool" :class="{ active: popover === 'date', set: !!task.due_date }" @click="togglePopover('date')">
+        <Icon name="calendar" :size="14" /><span class="dp-tool-lbl">{{ dueSummary }}</span>
+      </button>
+      <div class="dp-top-actions">
+        <button class="dp-tool" :class="{ active: popover === 'priority' }" title="Priorité" @click="togglePopover('priority')">
+          <span :style="`color:${priorityColor(task.priority)}`"><Icon name="flag" :size="15" /></span>
+        </button>
+        <button class="icon-btn" :class="{ active: task.is_pinned }" :title="task.is_pinned ? 'Désépingler' : 'Épingler'" @click="togglePin"><Icon name="pin" :size="15" /></button>
+        <button class="icon-btn" title="Fermer" @click="taskStore.select(null)"><Icon name="x" :size="14" /></button>
+      </div>
+
+      <!-- Popover Date + récurrence + rappels (ancré sous la barre haute) -->
+      <div v-if="popover === 'date'" class="dp-popover anchored-top">
+        <div class="date-row"><label class="field-label-sm">Début</label><input type="datetime-local" class="field-input" :value="toLocalInput(task.start_date)" @change="setDateField('start_date', $event)" /></div>
+        <div class="date-row"><label class="field-label-sm">Échéance</label><input type="datetime-local" class="field-input" :value="toLocalInput(task.due_date)" @change="setDateField('due_date', $event)" /></div>
+        <button class="collapsible-label" @click="showRecurrence = !showRecurrence"><span class="field-label">Récurrence</span><span v-if="task.rrule" class="rrule-badge">{{ task.rrule.replace('RRULE:', '').split(';')[0] }}</span><span class="chevron">{{ showRecurrence ? '▲' : '▼' }}</span></button>
+        <RecurrenceEditor v-if="showRecurrence" :model-value="task.rrule" :repeat-from="task.repeat_from" @update:model-value="taskStore.update(task.id, { rrule: $event })" @update:repeat-from="taskStore.update(task.id, { repeat_from: $event })" />
+        <button class="collapsible-label" @click="showReminders = !showReminders"><span class="field-label">Rappels</span><span class="chevron">{{ showReminders ? '▲' : '▼' }}</span></button>
+        <ReminderEditor v-if="showReminders" :task-id="task.id" />
+      </div>
+
+      <!-- Popover Priorité -->
+      <div v-if="popover === 'priority'" class="dp-popover anchored-top prio-pop">
+        <button v-for="opt in priorityOptions" :key="opt.value" class="prio-row" :class="{ active: task.priority === opt.value }" @click="setPriority(opt.value); popover = null">
+          <span :style="`color:${opt.color}`"><Icon name="flag" :size="14" /></span> {{ priorityLabel(opt.value) }}
+        </button>
+      </div>
     </div>
 
-    <!-- Titre -->
-    <div class="detail-section">
-      <div v-if="!editingTitle" class="detail-title" @click="editingTitle = true">
-        {{ task.title }}
-      </div>
+    <!-- Corps défilant -->
+    <div class="dp-body">
+      <div v-if="!editingTitle" class="dp-title" :class="{ done: task.status !== 0 }" @click="editingTitle = true">{{ task.title }}</div>
       <input
-        v-else
-        v-model="titleDraft"
-        class="title-input"
-        autofocus
-        @blur="saveTitle"
-        @keydown.enter="saveTitle"
+        v-else v-model="titleDraft" class="dp-title-input" autofocus
+        @blur="saveTitle" @keydown.enter="saveTitle"
         @keydown.escape="editingTitle = false; titleDraft = task.title"
       />
-    </div>
 
-    <!-- Actions rapides -->
-    <div class="detail-actions">
-      <button
-        class="action-chip"
-        :class="{ pinned: task.is_pinned }"
-        @click="togglePin"
-      >📌 {{ task.is_pinned ? 'Épinglée' : 'Épingler' }}</button>
-
-      <button
-        v-if="task.status === 0"
-        class="action-chip primary"
-        @click="taskStore.complete(task.id)"
-      >✓ Terminer</button>
-      <button
-        v-else-if="task.status === 2"
-        class="action-chip"
-        @click="taskStore.reopen(task.id)"
-      >↩ Rouvrir</button>
-      <button
-        v-else
-        class="action-chip"
-        @click="taskStore.reopen(task.id)"
-      >↩ Rouvrir (Won't Do)</button>
-
-      <button class="action-chip danger" @click="trashTask">🗑 Supprimer</button>
-    </div>
-
-    <!-- Dates -->
-    <div class="detail-field">
-      <div class="dates-grid">
-        <div class="date-row">
-          <label class="field-label-sm">📅 Planifiée</label>
-          <input type="datetime-local" class="field-input" :value="toLocalInput(task.start_date)" @change="setDateField('start_date', $event)" />
-        </div>
-        <div class="date-row">
-          <label class="field-label-sm">⏰ Deadline</label>
-          <input type="datetime-local" class="field-input" :value="toLocalInput(task.due_date)" @change="setDateField('due_date', $event)" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Priorité -->
-    <div class="detail-field">
-      <label class="field-label">
-        <span :style="`color: ${priorityColor(task.priority)}`">⚑</span>
-        Priorité
-      </label>
-      <div class="priority-selector">
-        <button
-          v-for="opt in priorityOptions"
-          :key="opt.value"
-          class="prio-btn"
-          :class="{ active: task.priority === opt.value }"
-          :style="`--c: ${opt.color}`"
-          @click="setPriority(opt.value)"
-        >{{ opt.label }}</button>
-      </div>
-    </div>
-
-    <!-- Progression + Estimation Pomodoro -->
-    <div class="detail-field" v-if="task.progress > 0 || true">
-      <label class="field-label">📊 Progression — {{ task.progress }}%</label>
-      <input
-        type="range"
-        min="0" max="100" step="5"
-        :value="task.progress"
-        class="progress-range"
-        @change="taskStore.update(task.id, { progress: Number(($event.target as HTMLInputElement).value) })"
-      />
-    </div>
-    <div class="detail-field pomo-field">
-      <label class="field-label-sm">🍅 Pomos estimés</label>
-      <input
-        type="number"
-        class="field-input pomo-input"
-        min="0" max="99"
-        :value="task.estimated_pomos || 0"
-        @change="taskStore.update(task.id, { estimated_pomos: Number(($event.target as HTMLInputElement).value) })"
-      />
-    </div>
-
-    <!-- Tags -->
-    <div class="detail-field">
-      <label class="field-label">🏷 Tags</label>
-      <div class="tags-row">
-        <span
-          v-for="tagId in task.tags"
-          :key="tagId"
-          class="tag-chip"
-          :style="tagStore.byId(tagId)?.color ? `background: ${tagStore.byId(tagId)!.color}22; color: ${tagStore.byId(tagId)!.color}` : ''"
-          @click="toggleTag(tagId)"
-        >
-          #{{ tagStore.byId(tagId)?.name ?? tagId }} ✕
-        </span>
-        <button class="tag-add-btn" @click="showTagPicker = !showTagPicker">＋ Tag</button>
-      </div>
-      <div v-if="showTagPicker" class="tag-picker">
-        <button
-          v-for="tag in tagStore.tags"
-          :key="tag.id"
-          class="tag-option"
-          :class="{ selected: task.tags?.includes(tag.id) }"
-          :style="tag.color ? `border-color: ${tag.color}` : ''"
-          @click="toggleTag(tag.id)"
-        >
-          #{{ tag.name }}
-        </button>
-        <div v-if="tagStore.tags.length === 0" class="empty-hint">Aucun tag — créez-en un :</div>
-        <div class="tag-create-row">
-          <input
-            v-model="newTagName"
-            class="tag-create-input"
-            placeholder="Nouveau tag…"
-            @keydown.enter="createAndAddTag"
-            @keydown.escape="showTagPicker = false"
-          />
-          <button class="btn btn-primary tag-create-btn" :disabled="!newTagName.trim()" @click="createAndAddTag">＋</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Récurrence -->
-    <div class="detail-field">
-      <button class="collapsible-label" @click="showRecurrence = !showRecurrence">
-        <span class="field-label">🔄 Récurrence</span>
-        <span v-if="task.rrule" class="rrule-badge">{{ task.rrule.replace('RRULE:', '').split(';')[0] }}</span>
-        <span class="chevron">{{ showRecurrence ? '▲' : '▼' }}</span>
-      </button>
-      <RecurrenceEditor
-        v-if="showRecurrence"
-        :model-value="task.rrule"
-        :repeat-from="task.repeat_from"
-        @update:model-value="taskStore.update(task.id, { rrule: $event })"
-        @update:repeat-from="taskStore.update(task.id, { repeat_from: $event })"
-      />
-    </div>
-
-    <!-- Rappels -->
-    <div class="detail-field">
-      <button class="collapsible-label" @click="showReminders = !showReminders">
-        <span class="field-label">🔔 Rappels</span>
-        <span class="chevron">{{ showReminders ? '▲' : '▼' }}</span>
-      </button>
-      <ReminderEditor v-if="showReminders" :task-id="task.id" />
-    </div>
-
-    <!-- Description -->
-    <div class="detail-field">
-      <label class="field-label">📝 Note</label>
+      <!-- Notes (markdown) -->
       <div
-        v-if="!editingDesc"
-        class="desc-display"
-        :class="{ empty: !task.description }"
+        v-if="!editingDesc" class="dp-notes" :class="{ empty: !task.description }"
         @click.prevent="(e) => { const t = e.target as HTMLElement; if (t.tagName !== 'INPUT') { editingDesc = true; descDraft = task!.description } else { onDescClick(e) } }"
       >
         <div v-if="task.description" class="md-body" v-html="descHtml" />
-        <span v-else class="empty-hint">Ajouter une note…</span>
+        <span v-else class="dp-placeholder">Ajouter une note…</span>
       </div>
-      <textarea
-        v-else
-        v-model="descDraft"
-        class="desc-input"
-        rows="6"
-        autofocus
-        placeholder="Markdown supporté…"
-        @blur="saveDesc"
-      />
-    </div>
+      <textarea v-else v-model="descDraft" class="dp-notes-input" rows="4" autofocus placeholder="Markdown supporté…" @blur="saveDesc" />
 
-    <!-- Pièces jointes -->
-    <div class="detail-field">
-      <AttachmentsPanel :task-id="task.id" />
-    </div>
-
-    <!-- Historique des versions -->
-    <div class="detail-field">
-      <VersionHistory
-        :task-id="task.id"
-        @restored="(desc) => { descDraft = desc; taskStore.update(task!.id, { description: desc }) }"
-      />
-    </div>
-
-    <!-- Templates -->
-    <div class="detail-field">
-      <TemplateManager :task="task" />
-    </div>
-
-    <!-- Sous-tâches (Tier 1) -->
-    <div class="detail-field">
-      <label class="field-label">↳ Sous-tâches <span v-if="subtasks.length" class="count-badge">{{ subtasks.filter(s => s.status === 2).length }}/{{ subtasks.length }}</span></label>
-      <div class="subtasks">
-        <div
-          v-for="child in subtasks"
-          :key="child.id"
-          class="subtask-item"
-          :class="{ done: child.status === 2 }"
-        >
-          <span
-            class="task-checkbox"
-            :class="[`p${child.priority}`, { checked: child.status === 2 }]"
-            @click="toggleSubtask(child)"
-          >
-            <svg v-if="child.status === 2" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L3.8 7.5L8.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </span>
-          <span class="subtask-title" @click="openSubtask(child)">{{ child.title }}</span>
-          <button class="remove-item icon-btn" @click="removeSubtask(child)">✕</button>
-        </div>
-        <div class="check-item new-item">
-          <input
-            v-model="newSubtaskTitle"
-            placeholder="Ajouter une sous-tâche"
-            @keydown.enter="addSubtask"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Check items -->
-    <div class="detail-field">
-      <label class="field-label">☑ Checklist</label>
-      <div class="checklist">
-        <TransitionGroup name="check-sort" tag="div">
-          <div
-            v-for="item in checkItems"
-            :key="item.id"
-            class="check-item"
-            :class="{ done: item.is_done }"
-          >
-            <input
-              type="checkbox"
-              :checked="item.is_done"
-              @change="toggleCheckItem(item)"
-            />
-            <span class="check-title">{{ item.title }}</span>
-            <button class="remove-item icon-btn" @click="removeCheckItem(item)">✕</button>
+      <!-- Sous-tâches -->
+      <div class="dp-block">
+        <div v-if="subtasks.length" class="dp-block-title">Sous-tâches <span class="count-badge">{{ subtasks.filter(s => s.status === 2).length }}/{{ subtasks.length }}</span></div>
+        <div class="subtasks">
+          <div v-for="child in subtasks" :key="child.id" class="subtask-item" :class="{ done: child.status === 2 }">
+            <span class="task-checkbox" :class="[`p${child.priority}`, { checked: child.status === 2 }]" @click="toggleSubtask(child)">
+              <svg v-if="child.status === 2" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5L3.8 7.5L8.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="subtask-title" @click="openSubtask(child)">{{ child.title }}</span>
+            <button class="remove-item icon-btn" @click="removeSubtask(child)">✕</button>
           </div>
-        </TransitionGroup>
-        <div class="check-item new-item">
-          <input
-            v-model="newItemTitle"
-            placeholder="Ajouter un élément"
-            @keydown.enter="addCheckItem"
-          />
-        </div>
-      </div>
-    </div>
-
-    <!-- Commentaires -->
-    <div class="detail-field">
-      <label class="field-label">💬 Commentaires</label>
-      <div class="comments">
-        <div v-for="c in comments" :key="c.id" class="comment">
-          <div class="comment-body">
-            <span class="comment-text">{{ c.content }}</span>
-            <span v-if="c.edited_at" class="comment-edited">(modifié)</span>
-          </div>
-          <div class="comment-footer">
-            <span class="comment-date">{{ formatCommentDate(c.created_at) }}</span>
-            <button class="icon-btn comment-del" @click="deleteComment(c)">✕</button>
+          <div class="check-item new-item">
+            <input ref="subtaskInput" v-model="newSubtaskTitle" placeholder="Ajouter une sous-tâche" @keydown.enter="addSubtask" />
           </div>
         </div>
-        <div v-if="loadingComments" class="comment-loading">Chargement…</div>
-        <div class="comment-new">
-          <input
-            v-model="newComment"
-            placeholder="Ajouter un commentaire…"
-            @keydown.enter="postComment"
-          />
+      </div>
+
+      <!-- Checklist -->
+      <div class="dp-block">
+        <div class="checklist">
+          <TransitionGroup name="check-sort" tag="div">
+            <div v-for="item in checkItems" :key="item.id" class="check-item" :class="{ done: item.is_done }">
+              <input type="checkbox" :checked="item.is_done" @change="toggleCheckItem(item)" />
+              <span class="check-title">{{ item.title }}</span>
+              <button class="remove-item icon-btn" @click="removeCheckItem(item)">✕</button>
+            </div>
+          </TransitionGroup>
+          <div class="check-item new-item">
+            <input v-model="newItemTitle" placeholder="Ajouter un élément" @keydown.enter="addCheckItem" />
+          </div>
         </div>
       </div>
-    </div>
-    <!-- Journal d'activité -->
-    <div class="detail-field">
-      <button class="collapsible-label" @click="showActivity ? showActivity = false : loadActivity()">
-        <span class="field-label">📋 Activité</span>
-        <span class="chevron">{{ showActivity ? '▲' : '▼' }}</span>
+
+      <!-- Section « Plus » : progression, pomodoro, PJ, versions, templates, activité -->
+      <button class="dp-more-toggle" @click="showMore = !showMore">
+        {{ showMore ? '▲ Réduire' : '⋯ Progression, pomodoro, pièces jointes, versions…' }}
       </button>
-      <div v-if="showActivity" class="activity-list">
-        <div v-for="a in activity" :key="a.id" class="activity-item">
-          <span class="activity-action">{{ a.action }}</span>
-          <span class="activity-date">{{ formatCommentDate(a.created_at) }}</span>
+      <div v-if="showMore" class="dp-more">
+        <div class="dp-more-row">
+          <label class="field-label-sm">Progression — {{ task.progress }}%</label>
+          <input type="range" min="0" max="100" step="5" :value="task.progress" class="progress-range"
+            @change="taskStore.update(task.id, { progress: Number(($event.target as HTMLInputElement).value) })" />
         </div>
-        <div v-if="activity.length === 0" class="empty-hint">Aucune activité</div>
+        <div class="dp-more-row">
+          <label class="field-label-sm">🍅 Pomos estimés</label>
+          <input type="number" class="field-input pomo-input" min="0" max="99" :value="task.estimated_pomos || 0"
+            @change="taskStore.update(task.id, { estimated_pomos: Number(($event.target as HTMLInputElement).value) })" />
+        </div>
+        <AttachmentsPanel :task-id="task.id" />
+        <VersionHistory :task-id="task.id" @restored="(desc) => { descDraft = desc; taskStore.update(task!.id, { description: desc }) }" />
+        <TemplateManager :task="task" />
+        <button class="collapsible-label" @click="showActivity ? showActivity = false : loadActivity()">
+          <span class="field-label">Activité</span>
+          <span class="chevron">{{ showActivity ? '▲' : '▼' }}</span>
+        </button>
+        <div v-if="showActivity" class="activity-list">
+          <div v-for="a in activity" :key="a.id" class="activity-item">
+            <span class="activity-action">{{ a.action }}</span>
+            <span class="activity-date">{{ formatCommentDate(a.created_at) }}</span>
+          </div>
+          <div v-if="activity.length === 0" class="empty-hint">Aucune activité</div>
+        </div>
+      </div>
+
+      <!-- Commentaires -->
+      <div class="dp-block">
+        <div class="dp-block-title">Commentaires</div>
+        <div class="comments">
+          <div v-for="c in comments" :key="c.id" class="comment">
+            <div class="comment-body"><span class="comment-text">{{ c.content }}</span><span v-if="c.edited_at" class="comment-edited">(modifié)</span></div>
+            <div class="comment-footer"><span class="comment-date">{{ formatCommentDate(c.created_at) }}</span><button class="icon-btn comment-del" @click="deleteComment(c)">✕</button></div>
+          </div>
+          <div v-if="loadingComments" class="comment-loading">Chargement…</div>
+          <div class="comment-new"><input v-model="newComment" placeholder="Ajouter un commentaire…" @keydown.enter="postComment" /></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Barre inférieure : liste à gauche, tags + suppression à droite -->
+    <div class="dp-toolbar">
+      <button class="dp-tool" :class="{ active: popover === 'move' }" title="Déplacer vers une liste" @click="togglePopover('move')">
+        <Icon name="inbox" :size="14" /><span class="dp-tool-lbl">{{ currentProjectName }}</span>
+      </button>
+      <div class="dp-tool-spacer" />
+      <button class="dp-tool" :class="{ active: popover === 'tags', set: !!task.tags?.length }" title="Tags" @click="togglePopover('tags')">
+        <Icon name="tag" :size="14" /><span v-if="task.tags?.length" class="dp-tool-lbl">{{ task.tags.length }}</span>
+      </button>
+      <button class="dp-tool danger" title="Supprimer" @click="trashTask"><Icon name="trash" :size="14" /></button>
+
+      <!-- Popover Déplacer vers -->
+      <div v-if="popover === 'move'" class="dp-popover move-pop">
+        <button
+          v-for="p in projectStore.projects.filter(p => !p.is_smart && !p.archived)"
+          :key="p.id"
+          class="prio-row"
+          :class="{ active: task.project === p.id }"
+          @click="moveToProject(p.id)"
+        >
+          <Icon :name="p.is_inbox ? 'inbox' : 'layers'" :size="14" /> {{ p.name }}
+        </button>
+      </div>
+
+      <!-- Popover Tags -->
+      <div v-if="popover === 'tags'" class="dp-popover tag-pop">
+        <div v-if="task.tags?.length" class="tags-row">
+          <span v-for="tagId in task.tags" :key="tagId" class="tag-chip" :style="tagStore.byId(tagId)?.color ? `background: ${tagStore.byId(tagId)!.color}22; color: ${tagStore.byId(tagId)!.color}` : ''" @click="toggleTag(tagId)">#{{ tagStore.byId(tagId)?.name ?? tagId }} ✕</span>
+        </div>
+        <div class="tag-picker-flat">
+          <button v-for="tag in tagStore.tags" :key="tag.id" class="tag-option" :class="{ selected: task.tags?.includes(tag.id) }" @click="toggleTag(tag.id)">#{{ tag.name }}</button>
+        </div>
+        <div class="tag-create-row"><input v-model="newTagName" class="tag-create-input" placeholder="Nouveau tag…" @keydown.enter="createAndAddTag" /><button class="btn btn-primary tag-create-btn" :disabled="!newTagName.trim()" @click="createAndAddTag">＋</button></div>
       </div>
     </div>
   </aside>
@@ -539,7 +441,16 @@ function formatCommentDate(iso: string) {
 </template>
 
 <style scoped>
-.detail-panel, .detail-empty {
+.detail-panel {
+  width: var(--detail-width);
+  min-width: var(--detail-width);
+  border-left: 1px solid var(--border);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.detail-empty {
   width: var(--detail-width);
   min-width: var(--detail-width);
   border-left: 1px solid var(--border);
@@ -547,6 +458,154 @@ function formatCommentDate(iso: string) {
   overflow-y: auto;
   background: var(--bg);
 }
+
+/* Détail façon TickTick : haut fixe, corps défilant, barre d'outils en bas. */
+.dp-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.dp-check { width: 18px; height: 18px; cursor: pointer; flex-shrink: 0; }
+.dp-top-sep { width: 1px; height: 16px; background: var(--border); }
+.dp-top-actions { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+.dp-top-actions .icon-btn.active { color: var(--primary); }
+
+/* Popovers ancrés SOUS la barre haute (date, priorité) */
+.dp-popover.anchored-top {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+.move-pop { left: 12px; right: auto; width: 240px; }
+
+.dp-body { flex: 1; overflow-y: auto; padding: 16px; }
+
+.dp-title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: text;
+  padding: 2px 0;
+}
+.dp-title.done { text-decoration: line-through; color: var(--text-muted); }
+.dp-title-input {
+  font-size: 17px;
+  font-weight: 600;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: none;
+  padding: 2px 0;
+  color: var(--text);
+}
+.dp-notes {
+  margin-top: 6px;
+  min-height: 32px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  cursor: text;
+  border-radius: 6px;
+}
+.dp-placeholder { color: var(--text-muted); font-size: 13px; }
+.dp-notes-input {
+  width: 100%;
+  margin-top: 6px;
+  border: none;
+  outline: none;
+  background: none;
+  font-size: 13.5px;
+  font-family: inherit;
+  line-height: 1.55;
+  resize: vertical;
+  color: var(--text);
+}
+.dp-block { margin-top: 16px; }
+.dp-block-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+}
+.dp-more-toggle {
+  margin-top: 16px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.dp-more-toggle:hover { color: var(--primary); }
+.dp-more { margin-top: 8px; display: flex; flex-direction: column; gap: 12px; }
+.dp-more-row { display: flex; align-items: center; gap: 10px; }
+
+/* Barre d'outils inférieure */
+.dp-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.dp-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+.dp-tool:hover { background: var(--bg-hover); }
+.dp-tool.active { background: var(--primary-soft); color: var(--primary); }
+.dp-tool.set { color: var(--text); }
+.dp-tool.danger:hover { color: var(--danger); }
+.dp-tool-ico { font-size: 14px; }
+.dp-tool-spacer { flex: 1; }
+
+.dp-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 12px;
+  right: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.14);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+.prio-pop, .tag-pop { left: auto; right: 12px; width: 240px; }
+.prio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+}
+.prio-row:hover { background: var(--bg-hover); }
+.prio-row.active { background: var(--primary-soft); }
+.tag-picker-flat { display: flex; flex-wrap: wrap; gap: 6px; }
 .detail-empty {
   display: flex;
   align-items: center;

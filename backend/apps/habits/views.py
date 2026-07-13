@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework import status
 
 from apps.projects.views import OwnedModelViewSet
-from .models import Habit, HabitCheckIn, HabitReminder, HABIT_PRESETS
+from .models import Habit, HABIT_PRESETS
 from .serializers import HabitSerializer, HabitCheckInSerializer, HabitReminderSerializer
 
 
@@ -28,12 +28,20 @@ class HabitViewSet(OwnedModelViewSet):
         serializer = HabitCheckInSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         checkin = serializer.save(habit=habit)
-        # auto-complete: if quantity >= goal_value, mark completed
         if habit.goal_type == Habit.GoalType.BINARY:
             checkin.completed = True
-        elif checkin.quantity >= habit.goal_value:
-            checkin.completed = True
-        checkin.save()
+            checkin.save(update_fields=["completed"])
+        else:
+            # Objectif numérique : le JOUR est atteint quand la SOMME des logs
+            # du jour ≥ goal (8 verres = 8 check-ins de 1), pas chaque log isolé.
+            from django.db.models import Sum
+
+            day_total = habit.checkins.filter(date=checkin.date).aggregate(
+                s=Sum("quantity")
+            )["s"] or 0
+            day_done = day_total >= habit.goal_value
+            habit.checkins.filter(date=checkin.date).update(completed=day_done)
+            checkin.refresh_from_db()
         return Response(HabitCheckInSerializer(checkin).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get", "post"], url_path="reminders")

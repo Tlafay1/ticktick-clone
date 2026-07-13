@@ -162,6 +162,13 @@ class TestM21HabitMultiLog:
             api.post(f"/api/habits/{habit['id']}/checkins/", {"date": today, "quantity": 1}, format="json")
         checkins = api.get(f"/api/habits/{habit['id']}/checkins/?date={today}").json()
         assert len(checkins) == 3
+        # Somme 3 < objectif 5 : le jour n'est pas encore atteint.
+        assert all(c["completed"] is False for c in checkins)
+        # Deux logs de plus → somme 5 ≥ objectif : le jour est atteint (agrégation).
+        for _ in range(2):
+            api.post(f"/api/habits/{habit['id']}/checkins/", {"date": today, "quantity": 1}, format="json")
+        checkins = api.get(f"/api/habits/{habit['id']}/checkins/?date={today}").json()
+        assert all(c["completed"] is True for c in checkins)
 
     def test_multiple_time_slot_alarms(self, api):
         """Plusieurs créneaux d'alarme distincts pour la même habitude."""
@@ -232,7 +239,6 @@ class TestM07Focus:
     """Focus : Pomodoro, chrono, tâche associée, sons d'ambiance."""
 
     def _make_task(self, api, inbox):
-        from datetime import timezone as dt_tz
         return api.post("/api/tasks/", {
             "project": inbox.id,
             "title": "Tâche focus",
@@ -497,13 +503,27 @@ class TestM12Gamification:
         assert "overdue" in data
         assert isinstance(data["score"], int)
 
-    def test_levels_and_badges(self, api, inbox):
+    def test_levels_and_badges(self, api, inbox, user):
         """Niveau calculé selon les complétions cumulées."""
+        from django.utils import timezone
+
+        from apps.tasks.models import Task
+
         resp = api.get("/api/stats/productivity-score/")
         assert resp.status_code == 200
         data = resp.json()
-        assert "level" in data
-        assert data["level"] >= 1
+        # Contrat consommé par le web (StatsView) : label texte, pas un entier.
+        assert data["level"] == "Débutant"
+
+        # 20 complétions cumulées font passer au niveau suivant.
+        now = timezone.now()
+        Task.objects.bulk_create([
+            Task(user=user, project=inbox, title=f"T{i}",
+                 status=Task.Status.COMPLETED, completed_at=now)
+            for i in range(20)
+        ])
+        resp = api.get("/api/stats/productivity-score/")
+        assert resp.json()["level"] == "Régulier"
 
 
 class TestM26DailyReview:

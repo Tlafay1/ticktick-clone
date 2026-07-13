@@ -144,7 +144,7 @@ const bestHour = computed(() => {
           </div>
           <div class="heatmap-legend">
             <span>Moins</span>
-            <div class="heat-cell" style="background:#d3e8c3" />
+            <div class="heat-cell" style="background:#c6e8b3" />
             <div class="heat-cell" style="background:#7bc96f" />
             <div class="heat-cell" style="background:#239a3b" />
             <div class="heat-cell" style="background:#196127" />

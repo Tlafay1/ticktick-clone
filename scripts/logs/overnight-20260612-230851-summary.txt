@@ -1,3 +1,0 @@
-Démarré 2026-06-12 23:08:51
-PASS  TestM02Folders
-PASS  TestM02ListCustomization

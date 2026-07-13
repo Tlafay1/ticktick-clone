@@ -154,7 +154,7 @@ async function onDrop(quadrantKey: string) {
         </div>
       </div>
     </div>
-    <TaskDetail v-if="taskStore.selectedId" class="eis-detail" />
+    <TaskDetail v-if="taskStore.selected()" class="eis-detail" />
     <TaskContextMenu
       v-if="contextMenu"
       :task="contextMenu.task"

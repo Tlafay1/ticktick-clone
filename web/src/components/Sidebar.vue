@@ -14,6 +14,10 @@ import { useDragSort } from '@/composables/useDragSort'
 import { useUiState } from '@/composables/useUiState'
 import { watch } from 'vue'
 import TagManager from './TagManager.vue'
+import Icon from './Icon.vue'
+import IconRail from './IconRail.vue'
+import MiniCalendar from './MiniCalendar.vue'
+import { updateTray } from '@/lib/electron'
 
 const router = useRouter()
 const route = useRoute()
@@ -27,15 +31,16 @@ const taskStore = useTaskStore()
 
 onMounted(async () => {
   if (!tagStore.tags.length) await tagStore.load()
+  await loadCounts()
 })
 
 const ALL_SMART_LISTS = [
-  { key: 'today',     label: 'Aujourd\'hui',      icon: '☀️' },
-  { key: 'tomorrow',  label: 'Demain',             icon: '🌤️' },
-  { key: 'next7',     label: '7 prochains jours',  icon: '📅' },
-  { key: 'all',       label: 'Toutes',             icon: '📋' },
-  { key: 'inbox',     label: 'Boîte de réception', icon: '📥' },
-  { key: 'completed', label: 'Terminées',          icon: '✅' },
+  { key: 'today',     label: 'Aujourd\'hui',      icon: 'sun' },
+  { key: 'tomorrow',  label: 'Demain',             icon: 'sunrise' },
+  { key: 'next7',     label: '7 prochains jours',  icon: 'calendar-days' },
+  { key: 'all',       label: 'Toutes',             icon: 'layers' },
+  { key: 'inbox',     label: 'Boîte de réception', icon: 'inbox' },
+  { key: 'completed', label: 'Terminées',          icon: 'check-circle' },
 ]
 
 const smartLists = computed(() => {
@@ -67,8 +72,46 @@ async function addList() {
 }
 
 const userProjects = computed(() =>
-  projectStore.projects.filter((p) => !p.is_inbox && !p.archived)
+  projectStore.projects.filter((p) => !p.is_inbox && !p.archived && !p.is_smart)
 )
+
+// Filtres (smart lists personnalisées) : section dédiée, comme TickTick.
+const smartProjects = computed(() =>
+  projectStore.projects.filter((p) => p.is_smart && !p.archived)
+)
+
+// Listes archivées : section repliée en bas, seul accès au désarchivage.
+const archivedProjects = computed(() =>
+  projectStore.projects.filter((p) => !p.is_inbox && p.archived)
+)
+const showArchived = ref(false)
+
+// Compteurs de tâches actives (Aujourd'hui / 7 jours / Inbox), comme TickTick.
+// Rafraîchis à chaque navigation (léger décalage accepté entre deux vues).
+const smartCounts = ref<Record<string, number>>({})
+// Compteurs par liste, dérivés d'UNE seule requête « toutes les actives ».
+const projectCounts = ref<Record<number, number>>({})
+
+async function loadCounts() {
+  const { tasksApi } = await import('@/api')
+  try {
+    const [today, next7, all] = await Promise.all([
+      tasksApi.list({ ...taskStore.smartParams('today'), smart: 1 }),
+      tasksApi.list({ ...taskStore.smartParams('next7'), smart: 1 }),
+      tasksApi.list({ smart: 1, status: 0 }),
+    ])
+    const byProject: Record<number, number> = {}
+    for (const t of all) byProject[t.project] = (byProject[t.project] ?? 0) + 1
+    projectCounts.value = byProject
+    smartCounts.value = {
+      today: today.length,
+      next7: next7.length,
+      inbox: projectStore.inbox ? (byProject[projectStore.inbox.id] ?? 0) : 0,
+    }
+    updateTray({ todayCount: today.length })
+  } catch { /* hors-ligne : on garde les derniers compteurs */ }
+}
+watch(() => route.fullPath, loadCounts)
 
 const ungroupedProjects = computed(() =>
   userProjects.value.filter((p) => !p.group)
@@ -78,9 +121,12 @@ function projectsInGroup(groupId: number) {
   return userProjects.value.filter((p) => p.group === groupId)
 }
 
-const collapsedGroups = ref<Record<number, boolean>>({})
+// Repli des dossiers : persisté côté API (ProjectGroup.collapsed).
+function isGroupCollapsed(id: number) {
+  return projectStore.groups.find((g) => g.id === id)?.collapsed ?? false
+}
 function toggleGroup(id: number) {
-  collapsedGroups.value[id] = !collapsedGroups.value[id]
+  projectStore.updateGroup(id, { collapsed: !isGroupCollapsed(id) })
 }
 
 // Nouveau dossier
@@ -125,12 +171,19 @@ function onProjectDragStart(e: DragEvent, p: Project) {
 }
 
 function onGroupDragOver(e: DragEvent, groupId: number) {
-  if (draggingProjectId.value === null) return
+  if (draggingProjectId.value === null && draggingGroupId.value === null) return
   e.preventDefault()
   groupDropOver.value = groupId
 }
 
 async function onGroupDrop(groupId: number) {
+  // Dossier déposé sur un dossier → réordonnancement.
+  if (draggingGroupId.value !== null) {
+    await reorderGroups(draggingGroupId.value, groupId)
+    draggingGroupId.value = null
+    groupDropOver.value = null
+    return
+  }
   const pid = draggingProjectId.value
   draggingProjectId.value = null
   groupDropOver.value = null
@@ -139,6 +192,25 @@ async function onGroupDrop(groupId: number) {
 }
 
 function onGroupDragLeave() { groupDropOver.value = null }
+
+// ── Réordonnancement des dossiers (drag d'un en-tête sur un autre) ─────────
+const draggingGroupId = ref<number | null>(null)
+
+function onGroupHeaderDragStart(g: ProjectGroup) {
+  draggingGroupId.value = g.id
+}
+
+async function reorderGroups(fromId: number, toId: number) {
+  if (fromId === toId) return
+  const list = [...projectStore.groups]
+  const fromIdx = list.findIndex(g => g.id === fromId)
+  const toIdx = list.findIndex(g => g.id === toId)
+  if (fromIdx < 0 || toIdx < 0) return
+  const [moved] = list.splice(fromIdx, 1)
+  list.splice(toIdx, 0, moved)
+  projectStore.groups = list.map((g, i) => ({ ...g, sort_order: (i + 1) * 1000 }))
+  await Promise.all(list.map((g, i) => projectsApi.updateGroup(g.id, { sort_order: (i + 1) * 1000 })))
+}
 
 // ── Tri des projets non groupés ─────────────────────────────────────────────
 
@@ -182,7 +254,13 @@ async function dropTaskOnTag(e: DragEvent, tagId: number) {
 
 const showTagManager = ref(false)
 
-const themeIcons: Record<string, string> = { auto: '💻', light: '☀️', dark: '🌙' }
+// Comme TickTick : le panneau des listes n'existe que dans le contexte Tâches.
+// Ailleurs (calendrier, habitudes, focus…), seul le rail reste sur desktop ;
+// le tiroir mobile, lui, sert partout de navigation.
+const TASK_PANEL_ROUTES = new Set(['smart-list', 'project', 'tag', 'task', 'kanban'])
+const isTaskContext = computed(() => TASK_PANEL_ROUTES.has(String(route.name)))
+
+const themeIcons: Record<string, string> = { auto: 'monitor', light: 'sun', dark: 'moon' }
 const themeOrder: Array<'auto' | 'light' | 'dark'> = ['auto', 'light', 'dark']
 
 function cycleTheme() {
@@ -197,7 +275,10 @@ function cycleTheme() {
   <!-- Voile cliquable pour fermer le tiroir -->
   <div v-if="sidebarOpen" class="drawer-overlay" @click="closeSidebar" />
 
-  <aside class="sidebar" :class="{ open: sidebarOpen }">
+  <!-- Rail d'icônes (desktop uniquement, comme TickTick) -->
+  <IconRail />
+
+  <aside class="sidebar" :class="{ open: sidebarOpen, 'no-task-context': !isTaskContext }">
     <div class="sidebar-top">
       <div class="app-title">TickTick</div>
     </div>
@@ -210,29 +291,51 @@ function cycleTheme() {
         class="nav-item"
         :class="{ active: isSmartActive(sl.key) }"
       >
-        <span class="nav-icon">{{ sl.icon }}</span>
+        <span class="nav-icon"><Icon :name="sl.icon" /></span>
         <span class="nav-label">{{ sl.label }}</span>
+        <span v-if="smartCounts[sl.key]" class="nav-count">{{ smartCounts[sl.key] }}</span>
       </RouterLink>
     </nav>
 
-    <div class="section-header">
+    <!-- Outils : sur desktop ils vivent dans le rail d'icônes ; ces entrées
+         ne servent qu'au tiroir mobile (rail masqué). -->
+    <div class="section-header mobile-only">
       <span>Outils</span>
     </div>
-    <nav class="nav-section">
-      <RouterLink to="/calendar"   class="nav-item"><span class="nav-icon">📆</span><span class="nav-label">Calendrier</span></RouterLink>
-      <RouterLink to="/timeline"   class="nav-item"><span class="nav-icon">📊</span><span class="nav-label">Timeline</span></RouterLink>
-      <RouterLink to="/eisenhower" class="nav-item"><span class="nav-icon">⊞</span><span class="nav-label">Eisenhower</span></RouterLink>
-      <RouterLink to="/habits"     class="nav-item"><span class="nav-icon">🌱</span><span class="nav-label">Habitudes</span></RouterLink>
-      <RouterLink to="/focus"      class="nav-item"><span class="nav-icon">🍅</span><span class="nav-label">Focus</span></RouterLink>
-      <RouterLink to="/stats"      class="nav-item"><span class="nav-icon">📈</span><span class="nav-label">Statistiques</span></RouterLink>
-      <RouterLink to="/countdown"  class="nav-item"><span class="nav-icon">⏳</span><span class="nav-label">Compte à rebours</span></RouterLink>
+    <nav class="nav-section mobile-only">
+      <RouterLink to="/calendar"   class="nav-item"><span class="nav-icon"><Icon name="calendar" /></span><span class="nav-label">Calendrier</span></RouterLink>
+      <RouterLink to="/timeline"   class="nav-item"><span class="nav-icon"><Icon name="timeline" /></span><span class="nav-label">Timeline</span></RouterLink>
+      <RouterLink to="/eisenhower" class="nav-item"><span class="nav-icon"><Icon name="grid" /></span><span class="nav-label">Eisenhower</span></RouterLink>
+      <RouterLink to="/habits"     class="nav-item"><span class="nav-icon"><Icon name="sprout" /></span><span class="nav-label">Habitudes</span></RouterLink>
+      <RouterLink to="/focus"      class="nav-item"><span class="nav-icon"><Icon name="timer" /></span><span class="nav-label">Focus</span></RouterLink>
+      <RouterLink to="/stats"      class="nav-item"><span class="nav-icon"><Icon name="bar-chart" /></span><span class="nav-label">Statistiques</span></RouterLink>
+      <RouterLink to="/countdown"  class="nav-item"><span class="nav-icon"><Icon name="hourglass" /></span><span class="nav-label">Compte à rebours</span></RouterLink>
     </nav>
+
+    <!-- Filtres = smart lists personnalisées (moteur de règles) -->
+    <template v-if="smartProjects.length">
+      <div class="section-header"><span>Filtres</span></div>
+      <nav class="nav-section">
+        <div
+          v-for="p in smartProjects"
+          :key="p.id"
+          class="nav-item project-item"
+          :class="{ active: isProjectActive(p.id) }"
+          @click="router.push(`/project/${p.id}`)"
+          @contextmenu.prevent="showProjectMenu($event, p)"
+        >
+          <span class="nav-icon"><Icon name="filter" /></span>
+          <span class="nav-label">{{ p.name }}</span>
+          <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" /></button>
+        </div>
+      </nav>
+    </template>
 
     <div class="section-header">
       <span>Mes listes</span>
       <div style="display:flex;gap:2px">
-        <button class="icon-btn" title="Nouveau dossier" @click="showNewGroup = true">📁</button>
-        <button class="icon-btn" title="Nouvelle liste"  @click="showNewList = true">＋</button>
+        <button class="icon-btn" title="Nouveau dossier" @click="showNewGroup = true"><Icon name="folder" :size="14" /></button>
+        <button class="icon-btn" title="Nouvelle liste"  @click="showNewList = true"><Icon name="plus" :size="14" /></button>
       </div>
     </div>
 
@@ -243,17 +346,20 @@ function cycleTheme() {
         <div
           class="nav-item group-item"
           :class="{ 'drop-target': groupDropOver === g.id }"
+          draggable="true"
           @click="toggleGroup(g.id)"
           @contextmenu.prevent="showGroupMenu($event, g)"
+          @dragstart="onGroupHeaderDragStart(g)"
           @dragover="onGroupDragOver($event, g.id)"
           @drop.prevent="onGroupDrop(g.id)"
           @dragleave="onGroupDragLeave"
+          @dragend="draggingGroupId = null; groupDropOver = null"
         >
-          <span class="nav-icon">{{ collapsedGroups[g.id] ? '▶' : '▼' }}</span>
+          <span class="nav-icon chevron-icon" :class="{ open: !isGroupCollapsed(g.id) }"><Icon name="chevron-right" :size="12" /></span>
           <span class="nav-label">{{ g.name }}</span>
           <span class="group-count">{{ projectsInGroup(g.id).length }}</span>
         </div>
-        <template v-if="!collapsedGroups[g.id]">
+        <template v-if="!isGroupCollapsed(g.id)">
           <div
             v-for="p in projectsInGroup(g.id)"
             :key="p.id"
@@ -264,10 +370,11 @@ function cycleTheme() {
             @contextmenu.prevent="showProjectMenu($event, p)"
             @dragstart="onProjectDragStart($event, p)"
           >
-            <span class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+            <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
             <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
             <span class="nav-label">{{ p.name }}</span>
-            <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+            <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
+            <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
           </div>
         </template>
       </template>
@@ -307,10 +414,11 @@ function cycleTheme() {
         @drop="listDrop(idx)"
         @dragend="listDragEnd"
       >
-        <span class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+        <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
         <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
         <span class="nav-label">{{ p.name }}</span>
-        <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)">⋯</button>
+        <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
+        <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
       </div>
 
       <!-- Inbox (non triable, non déplaçable) -->
@@ -322,8 +430,9 @@ function cycleTheme() {
           @contextmenu.prevent="showProjectMenu($event, projectStore.inbox!)"
         >
           <span class="nav-dot" />
-          <span class="nav-icon project-icon">📥</span>
+          <span class="nav-icon"><Icon name="inbox" /></span>
           <span class="nav-label">{{ projectStore.inbox.name }}</span>
+          <span v-if="smartCounts.inbox" class="nav-count">{{ smartCounts.inbox }}</span>
         </div>
       </template>
 
@@ -336,14 +445,33 @@ function cycleTheme() {
           @keydown.escape="showNewList = false; newListName = ''"
         />
       </div>
+
+      <!-- Listes archivées (repliées) : accès au désarchivage -->
+      <template v-if="archivedProjects.length">
+        <button class="archived-toggle" @click="showArchived = !showArchived">
+          {{ showArchived ? '▾' : '▸' }} Archivées ({{ archivedProjects.length }})
+        </button>
+        <div
+          v-for="p in archivedProjects"
+          v-show="showArchived"
+          :key="p.id"
+          class="nav-item project-item archived-item"
+          @click="router.push(`/project/${p.id}`)"
+          @contextmenu.prevent="showProjectMenu($event, p)"
+        >
+          <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+          <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
+          <span class="nav-label">{{ p.name }}</span>
+          <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
+        </div>
+      </template>
     </nav>
 
-    <!-- Section tags hiérarchiques -->
-    <template v-if="tagStore.tags.length || true">
-      <div class="section-header">
-        <span>Étiquettes</span>
-        <button class="icon-btn" title="Gérer les étiquettes" @click="showTagManager = true">⚙</button>
-      </div>
+    <!-- Section tags hiérarchiques (toujours visible : point d'accès au gestionnaire) -->
+    <div class="section-header">
+      <span>Étiquettes</span>
+      <button class="icon-btn" title="Gérer les étiquettes" @click="showTagManager = true"><Icon name="settings" :size="13" /></button>
+    </div>
       <nav class="nav-section">
         <template v-for="tag in tagStore.rootTags" :key="tag.id">
           <div
@@ -360,7 +488,7 @@ function cycleTheme() {
               v-if="tagStore.childrenOf(tag.id).length"
               class="tag-chevron"
               @click.stop="toggleTagCollapse(tag.id)"
-            >{{ collapsedTags[tag.id] ? '▶' : '▼' }}</span>
+            ><Icon :name="collapsedTags[tag.id] ? 'chevron-right' : 'chevron-down'" :size="11" /></span>
           </div>
           <template v-if="!collapsedTags[tag.id]">
             <div
@@ -379,7 +507,6 @@ function cycleTheme() {
           </template>
         </template>
       </nav>
-    </template>
 
     <!-- Tag Manager Modal -->
     <TagManager v-if="showTagManager" @close="showTagManager = false" />
@@ -396,6 +523,7 @@ function cycleTheme() {
       :project="contextMenu.target"
       :x="contextMenu.x"
       :y="contextMenu.y"
+      @edit="editingProject = contextMenu.target"
       @close="contextMenu = null"
     />
 
@@ -409,22 +537,24 @@ function cycleTheme() {
 
     <div class="sidebar-footer">
       <RouterLink to="/trash" class="nav-item" :class="{ active: isSmartActive('trash') }">
-        <span class="nav-icon">🗑</span>
+        <span class="nav-icon"><Icon name="trash" /></span>
         <span class="nav-label">Corbeille</span>
       </RouterLink>
-      <RouterLink to="/settings" class="nav-item">
-        <span class="nav-icon">⚙️</span>
+      <!-- Sur desktop : réglages/thème/déconnexion vivent dans le rail. -->
+      <RouterLink to="/settings" class="nav-item mobile-only">
+        <span class="nav-icon"><Icon name="settings" /></span>
         <span class="nav-label">Paramètres</span>
       </RouterLink>
-      <div class="sidebar-actions">
+      <div class="sidebar-actions mobile-only">
         <button class="icon-btn theme-btn" :title="`Thème : ${userStore.theme}`" @click="cycleTheme">
-          {{ themeIcons[userStore.theme] }}
+          <Icon :name="themeIcons[userStore.theme]" :size="14" />
         </button>
         <button class="nav-item logout-btn" @click="logout">
           <span class="nav-icon">⎋</span>
           <span class="nav-label">Se déconnecter</span>
         </button>
       </div>
+      <MiniCalendar class="desktop-only" />
     </div>
   </aside>
 </template>
@@ -444,6 +574,19 @@ function cycleTheme() {
 /* Hamburger + voile : masqués sur desktop, visibles en tiroir sur mobile. */
 .drawer-toggle { display: none; }
 .drawer-overlay { display: none; }
+
+/* Hors contexte Tâches, le panneau des listes disparaît sur desktop
+   (le tiroir mobile reste disponible partout). */
+@media (min-width: 769px) {
+  .sidebar.no-task-context { display: none; }
+}
+
+/* Entrées réservées au tiroir mobile (le rail les porte sur desktop). */
+.mobile-only { display: none !important; }
+@media (max-width: 768px) {
+  .mobile-only { display: flex !important; }
+  .desktop-only { display: none !important; }
+}
 
 @media (max-width: 768px) {
   .drawer-toggle {
@@ -527,8 +670,26 @@ function cycleTheme() {
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
-.nav-icon { font-size: 15px; width: 20px; text-align: center; }
+.nav-icon {
+  width: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+}
+.nav-item.active .nav-icon { color: var(--primary); }
 .nav-label { flex: 1; }
+
+/* Compteur de tâches à droite (façon TickTick) */
+.nav-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 6px;
+}
+
+/* Chevron rotatif des dossiers */
+.chevron-icon { transition: transform 0.15s; color: var(--text-muted); }
+.chevron-icon.open { transform: rotate(90deg); }
 
 .nav-dot {
   width: 10px; height: 10px; border-radius: 50%;
@@ -568,6 +729,21 @@ function cycleTheme() {
   color: var(--text-muted);
   text-align: center;
 }
+
+.archived-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  padding: 6px 16px 4px;
+}
+.archived-toggle:hover { color: var(--text-secondary); }
+.archived-item { opacity: 0.55; }
+.archived-item:hover { opacity: 0.85; }
 
 .new-list-input { padding: 4px 8px; }
 .new-list-input input {

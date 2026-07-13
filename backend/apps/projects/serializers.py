@@ -15,6 +15,11 @@ class SectionSerializer(serializers.ModelSerializer):
         model = Section
         fields = '__all__'
 
+    def validate_project(self, project):
+        if project.user != self.context["request"].user:
+            raise serializers.ValidationError("Liste inconnue.")
+        return project
+
 
 class ProjectSerializer(serializers.ModelSerializer):
     sections = SectionSerializer(many=True, read_only=True)
@@ -23,3 +28,8 @@ class ProjectSerializer(serializers.ModelSerializer):
         model = Project
         fields = '__all__'
         read_only_fields = ('user',)
+
+    def validate_group(self, group):
+        if group is not None and group.user != self.context["request"].user:
+            raise serializers.ValidationError("Dossier inconnu.")
+        return group

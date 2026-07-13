@@ -40,6 +40,17 @@ async function removeTag(id: number) {
   if (!confirm('Supprimer ce tag ? Il sera retiré de toutes les tâches.')) return
   await tagStore.remove(id)
 }
+
+// Fusion : re-tague les tâches et reparente les enfants vers la cible.
+const mergingTagId = ref<number | null>(null)
+const mergeTargetId = ref<number | null>(null)
+
+async function confirmMerge() {
+  if (mergingTagId.value === null || mergeTargetId.value === null) return
+  await tagStore.merge(mergingTagId.value, mergeTargetId.value)
+  mergingTagId.value = null
+  mergeTargetId.value = null
+}
 </script>
 
 <template>
@@ -90,10 +101,20 @@ async function removeTag(id: number) {
             <button class="btn btn-primary" @click="saveEdit">✓</button>
             <button class="btn btn-ghost" @click="editingTagId = null">✕</button>
           </template>
+          <template v-else-if="mergingTagId === tag.id">
+            <span class="tag-name">Fusionner #{{ tag.name }} dans :</span>
+            <select v-model="mergeTargetId" class="parent-select">
+              <option :value="null">— Choisir la cible —</option>
+              <option v-for="t in tagStore.tags.filter(t => t.id !== tag.id)" :key="t.id" :value="t.id">#{{ t.name }}</option>
+            </select>
+            <button class="btn btn-primary" :disabled="mergeTargetId === null" @click="confirmMerge">Fusionner</button>
+            <button class="btn btn-ghost" @click="mergingTagId = null; mergeTargetId = null">✕</button>
+          </template>
           <template v-else>
             <span class="tag-dot" :style="tag.color ? `background:${tag.color}` : 'background:var(--border)'" />
             <span class="tag-name">#{{ tag.name }}</span>
             <span v-if="tag.parent" class="tag-parent-hint">→ #{{ tagStore.tags.find(t => t.id === tag.parent)?.name }}</span>
+            <button class="icon-btn" title="Fusionner dans un autre tag" @click="mergingTagId = tag.id; mergeTargetId = null">⇄</button>
             <button class="icon-btn" @click="startEdit(tag)">✏️</button>
             <button class="icon-btn danger-btn" @click="removeTag(tag.id)">🗑</button>
           </template>

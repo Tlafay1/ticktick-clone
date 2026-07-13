@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import ApiKey, PushSubscription, User, UserSettings
+from .models import ApiKey, FCMDevice, PushSubscription, User, UserSettings
 
 admin.site.register(User, UserAdmin)
 admin.site.register(UserSettings)
@@ -14,3 +14,4 @@ class ApiKeyAdmin(admin.ModelAdmin):
 
 
 admin.site.register(PushSubscription)
+admin.site.register(FCMDevice)
