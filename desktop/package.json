@@ -11,7 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "electron-store": "^10.0.0"
+    "electron-store": "^10.0.0",
+    "electron-updater": "^6.3.0"
   },
   "devDependencies": {
     "electron": "^31.0.0",
@@ -21,9 +22,27 @@
   "build": {
     "appId": "com.ticktick.clone",
     "productName": "TickTick Clone",
-    "directories": { "output": "dist-electron" },
-    "files": ["main.js", "preload.js", "serve-dist.js", "assets/**"],
-    "extraResources": [{ "from": "../web/dist", "to": "web-dist" }],
+    "publish": {
+      "provider": "github",
+      "owner": "Tlafay1",
+      "repo": "ticktick-clone",
+      "releaseType": "release"
+    },
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "serve-dist.js",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web-dist"
+      }
+    ],
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"

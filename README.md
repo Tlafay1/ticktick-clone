@@ -36,6 +36,26 @@ cd backend && uv run pytest
 cd web && npm test
 ```
 
+## Releases & installation des clients (sans store)
+
+Pousser un tag `v*` (ex. `git tag v1.1.0 && git push --tags`) déclenche
+[release.yml](.github/workflows/release.yml) qui attache à la GitHub Release :
+
+- **Windows** : l'installeur NSIS + `latest.yml`. L'app embarque
+  **electron-updater** : elle vérifie les Releases GitHub au lancement (puis
+  toutes les 4 h), télécharge en arrière-plan et installe au redémarrage —
+  aucune action après la première installation.
+- **Android** : l'APK. Signé release si les secrets de keystore sont
+  configurés sur le repo (`ANDROID_KEYSTORE_BASE64` — keystore en base64,
+  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`),
+  sinon signé debug (installable, mais garder ensuite le même mode de
+  signature). Pour les mises à jour : installer l'APK par-dessus, ou pointer
+  [Obtainium](https://github.com/ImranR98/Obtainium) sur ce repo pour être
+  notifié et installer chaque release automatiquement.
+
+Sur l'écran de connexion des clients embarqués, renseigner l'« URL du
+serveur » self-hosted (mémorisée, préfixe API + WebSocket).
+
 ## Philosophie
 
 Système simple et ouvert : pas de captcha, pas de rate-limiting, pas de

@@ -24,6 +24,13 @@ Sous WSL : le SDK Android étant côté Windows, lancer `npm run sync` dans WSL
 puis ouvrir `mobile/android` avec Android Studio **Windows** (le dossier est
 accessible via `\\wsl$\…`), ou cloner le repo côté Windows pour le build.
 
+## Release automatisée
+
+Un tag `v*` sur le repo builde et attache l'APK à la GitHub Release
+(cf. [release.yml](../.github/workflows/release.yml)) — signé release si la
+keystore est en secrets, debug sinon. Pour les mises à jour sans store,
+pointer [Obtainium](https://github.com/ImranR98/Obtainium) sur le repo.
+
 ## Connexion au serveur
 
 L'app n'est pas servie par le backend : au premier lancement, renseigner
