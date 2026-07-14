@@ -21,9 +21,15 @@ class FocusSession(models.Model):
     start_at = models.DateTimeField()
     end_at = models.DateTimeField(null=True, blank=True)
     duration_seconds = models.PositiveIntegerField(default=0)
+    # Durée prévue (pomodoro piloté serveur) ; null pour un chrono libre.
+    planned_seconds = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
         ordering = ["-start_at"]
 
     def __str__(self):
         return f"Focus<{self.user} {self.start_at}>"
+
+    @property
+    def is_running(self):
+        return self.end_at is None

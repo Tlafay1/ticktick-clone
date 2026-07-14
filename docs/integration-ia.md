@@ -6,6 +6,15 @@ surface d'outils d'un agent type TickTick (créer/maj/compléter/déplacer/épin
 tâches, projets, dossiers, habitudes, colonnes kanban, tags, stats focus) correspond
 à des endpoints existants.
 
+> **Support natif de l'écosystème d'agents (API 0.2.0+)** — l'agent n'a plus besoin
+> de poller ni de contourner les limites héritées de TickTick. Voir le
+> [changelog API](api-changelog.md) pour le détail : webhooks sortants enrichis
+> (diff, acteur, id d'événement, backoff), en-tête `X-Actor` sur toutes les
+> écritures, endpoints agrégés `today`/`density`, filtre `overdue`, bulk
+> `complete`/`update`/`reschedule`, sessions de focus pilotées serveur
+> (`start`/`stop`/`current`), et sérialisation `rrule` corrigée (`null` au lieu de
+> `""`).
+
 ## 1. Générer une clé d'API
 
 Plutôt que le va-et-vient JWT (access 7 j / refresh 180 j), un agent utilise une
@@ -59,13 +68,19 @@ class TickTickManager:
 
 | Outil de l'agent | Endpoint du clone |
 |---|---|
-| create/update/delete/move/search/pin task | `/api/tasks/` (complete = `PATCH status:2`, move = `PATCH project`) |
-| today / overdue | `/api/tasks/?smart=1&due_before=…&status=0` |
+| create/update/delete/move/search/pin task | `/api/tasks/` (complete = `PATCH status:2`, move = `PATCH project` **sans projet source**) |
+| today / overdue (un appel) | `/api/tasks/today/` · filtre `/api/tasks/?overdue=1` |
+| charge par jour | `/api/tasks/density/?days=N` |
+| bulk complete/update/reschedule | `POST /api/tasks/bulk/` (résultat par item) |
+| revendiquer une tâche | `PATCH /api/tasks/{id}/ {claimed_by}` → event `task.claimed` |
 | projets, dossiers | `/api/projects/`, `/api/project-groups/` |
 | colonnes kanban | `/api/sections/` (move = `PATCH section`) |
 | habitudes + check-in | `/api/habits/`, `/api/habits/{id}/checkins/` |
 | tags | `/api/tags/` |
+| pomodoro piloté | `POST /api/focus-sessions/{start,stop}/`, `GET …/current/` |
 | stats focus par tag | `/api/focus-sessions/stats/` → `by_tag` |
+| webhooks sortants | `/api/webhooks/` (payload v2 : diff, acteur, id d'événement) |
+| origine d'une écriture | en-tête `X-Actor: agent:<slug>` → champ `last_actor` |
 
 ## 4. Limites à connaître
 

@@ -64,7 +64,7 @@ class CommentSerializer(serializers.ModelSerializer):
 class ActivityLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityLog
-        fields = ["id", "action", "payload", "created_at"]
+        fields = ["id", "action", "actor", "payload", "created_at"]
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
@@ -108,6 +108,33 @@ class NestedReminderSerializer(serializers.ModelSerializer):
         fields = ["id", "trigger_type", "minutes_before", "trigger_at", "annoying"]
 
 
+class NullableBlankCharField(serializers.CharField):
+    """CharField stocké en base comme "" mais exposé/accepté comme null.
+
+    Corrige la sérialisation `rrule: ""` qui faisait crasher des clients
+    (ils attendent `null` pour « pas de valeur »). `null` en entrée est
+    normalisé vers "" (le champ modèle n'est pas nullable).
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("allow_null", True)
+        kwargs.setdefault("allow_blank", True)
+        super().__init__(**kwargs)
+
+    def validate_empty_values(self, data):
+        # DRF court-circuite `None` (allow_null) avant to_internal_value ;
+        # on intercepte ici pour normaliser null → "" (champ modèle non nullable).
+        if data is None:
+            return (True, "")
+        return super().validate_empty_values(data)
+
+    def to_representation(self, value):
+        if value in (None, ""):
+            return None
+        return super().to_representation(value)
+
+
 class TaskSerializer(serializers.ModelSerializer):
     check_items = CheckItemSerializer(many=True, read_only=True)
     tags = serializers.PrimaryKeyRelatedField(
@@ -115,7 +142,8 @@ class TaskSerializer(serializers.ModelSerializer):
     )
     reminders = NestedReminderSerializer(many=True, required=False)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
-
+    rrule = NullableBlankCharField(max_length=512)
+    claimed_by = NullableBlankCharField(max_length=64)
 
     class Meta:
         model = Task
@@ -125,10 +153,11 @@ class TaskSerializer(serializers.ModelSerializer):
             "start_date", "due_date", "planned_date", "end_date", "is_all_day", "timezone_name",
             "rrule", "repeat_from", "tags", "sort_order",
             "completed_at", "trashed_at", "archived_at", "created_at", "modified_at",
-            "check_items", "reminders", "estimated_pomos",
+            "check_items", "reminders", "estimated_pomos", "last_actor", "claimed_by",
         ]
         read_only_fields = [
-            "completed_at", "trashed_at", "archived_at", "pinned_at", "created_at", "modified_at",
+            "completed_at", "trashed_at", "archived_at", "pinned_at", "created_at",
+            "modified_at", "last_actor",
         ]
 
     def validate_project(self, project):
@@ -197,9 +226,16 @@ class TaskSerializer(serializers.ModelSerializer):
         for r in reminders_data[:5]:
             Reminder.objects.create(task=task, **r)
 
+    def _actor(self):
+        from apps.accounts.actors import get_actor
+
+        request = self.context.get("request")
+        return get_actor(request) if request else "user"
+
     def update(self, instance, validated_data):
         from django.utils import timezone
 
+        validated_data["last_actor"] = self._actor()
         reminders_data = validated_data.pop("reminders", None)
         if "is_pinned" in validated_data:
             if validated_data["is_pinned"] and not instance.is_pinned:
@@ -215,12 +251,13 @@ class TaskSerializer(serializers.ModelSerializer):
         )
         due_changed = "due_date" in changed
         task = super().update(instance, validated_data)
+        actor = validated_data["last_actor"]
         if reminders_data is not None:
             self._save_reminders(task, reminders_data)
         if changed:
-            ActivityLog.log(task, "updated", fields=changed)
+            ActivityLog.log(task, "updated", actor=actor, fields=changed)
         if due_changed:
-            ActivityLog.log(task, "due_date_changed")
+            ActivityLog.log(task, "due_date_changed", actor=actor)
         return task
 
     def create(self, validated_data):
@@ -232,11 +269,12 @@ class TaskSerializer(serializers.ModelSerializer):
                 defaults={"name": "Inbox"},
             )[0]
 
+        validated_data["last_actor"] = self._actor()
         reminders_data = validated_data.pop("reminders", None)
         if validated_data.get("is_pinned"):
             validated_data["pinned_at"] = timezone.now()
         task = super().create(validated_data)
         if reminders_data:
             self._save_reminders(task, reminders_data)
-        ActivityLog.log(task, "created")
+        ActivityLog.log(task, "created", actor=validated_data["last_actor"])
         return task

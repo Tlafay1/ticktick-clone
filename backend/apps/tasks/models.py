@@ -81,6 +81,10 @@ class Task(models.Model):
 
     sort_order = models.BigIntegerField(default=0)
     external_id = models.CharField(max_length=64, blank=True, db_index=True)
+    # Acteur de la dernière modification (en-tête X-Actor : "user", "agent:<slug>"…).
+    last_actor = models.CharField(max_length=64, default="user")
+    # Revendication par un agent ("" = non revendiquée) ; sérialisée null si vide.
+    claimed_by = models.CharField(max_length=64, blank=True, default="")
     completed_at = models.DateTimeField(null=True, blank=True)
     trashed_at = models.DateTimeField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
@@ -137,9 +141,10 @@ class Task(models.Model):
         except Exception:
             return None
 
-    def set_status(self, status):
+    def set_status(self, status, actor="user"):
         now = timezone.now()
         self.status = status
+        self.last_actor = actor
         self.completed_at = now if status != Task.Status.NORMAL else None
         if status == Task.Status.COMPLETED:
             self.progress = 100
@@ -163,32 +168,36 @@ class Task(models.Model):
                 if child.status == Task.Status.NORMAL and child.trashed_at is None:
                     child.status = status
                     child.completed_at = now
+                    child.last_actor = actor
                     child.save()
-            self._maybe_complete_parent()
-        ActivityLog.log(self, "status_changed", status=status)
+            self._maybe_complete_parent(actor=actor)
+        ActivityLog.log(self, "status_changed", actor=actor, status=status)
 
-    def _maybe_complete_parent(self):
+    def _maybe_complete_parent(self, actor="user"):
         """Cocher la dernière sous-tâche restante termine le parent (Tier 1)."""
         parent = self.parent
         if parent is None or parent.status != Task.Status.NORMAL:
             return
         siblings = parent.children.filter(trashed_at__isnull=True)
         if siblings.exists() and not siblings.filter(status=Task.Status.NORMAL).exists():
-            parent.set_status(Task.Status.COMPLETED)
+            parent.set_status(Task.Status.COMPLETED, actor=actor)
 
-    def trash(self):
+    def trash(self, actor="user"):
         now = timezone.now()
         self.trashed_at = now
+        self.last_actor = actor
         self.save()
         for child in self.descendants():
             if child.trashed_at is None:
                 child.trashed_at = now
+                child.last_actor = actor
                 child.save()
-        ActivityLog.log(self, "trashed")
+        ActivityLog.log(self, "trashed", actor=actor)
 
-    def restore(self):
+    def restore(self, actor="user"):
         marker = self.trashed_at
         self.trashed_at = None
+        self.last_actor = actor
         # Une sous-tâche restaurée seule remonte à la racine si son parent
         # est encore à la corbeille.
         if self.parent and self.parent.trashed_at is not None:
@@ -199,8 +208,9 @@ class Task(models.Model):
             for child in self.descendants():
                 if child.trashed_at == marker:
                     child.trashed_at = None
+                    child.last_actor = actor
                     child.save()
-        ActivityLog.log(self, "restored")
+        ActivityLog.log(self, "restored", actor=actor)
 
     @classmethod
     def purge_expired_trash(cls, user):
@@ -365,6 +375,7 @@ class ActivityLog(models.Model):
 
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="activity")
     action = models.CharField(max_length=64)
+    actor = models.CharField(max_length=64, default="user")
     payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -372,5 +383,5 @@ class ActivityLog(models.Model):
         ordering = ["-created_at"]
 
     @classmethod
-    def log(cls, task, action, **payload):
-        return cls.objects.create(task=task, action=action, payload=payload)
+    def log(cls, task, action, actor="user", **payload):
+        return cls.objects.create(task=task, action=action, actor=actor, payload=payload)
