@@ -16,10 +16,12 @@ class WebhookViewSet(OwnedModelViewSet):
     @action(detail=True, methods=["post"])
     def ping(self, request, pk=None):
         """Envoie un événement de test au webhook (vérifier le récepteur)."""
+        from .dispatch import build_envelope
         from .tasks import deliver_webhook
 
         hook = self.get_object()
-        deliver_webhook.delay(hook.id, "ping", {"message": "pong"})
+        envelope = build_envelope("ping", {"message": "pong"})
+        deliver_webhook.delay(hook.id, envelope)
         return Response({"detail": "Ping envoyé."})
 
     @action(detail=True, methods=["get"])

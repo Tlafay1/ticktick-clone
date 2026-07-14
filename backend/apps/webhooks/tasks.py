@@ -14,8 +14,20 @@ def sign(secret, body):
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=15)
-def deliver_webhook(self, webhook_id, event, payload):
+@shared_task(
+    bind=True,
+    max_retries=5,
+    retry_backoff=True,       # backoff exponentiel : 1s, 2s, 4s, 8s, 16s…
+    retry_backoff_max=600,
+    retry_jitter=True,
+)
+def deliver_webhook(self, webhook_id, envelope):
+    """Livre une enveloppe v2 à un webhook, signée et journalisée.
+
+    `envelope` est le dict complet construit par `dispatch.build_envelope`
+    (id, event, timestamp, actor, data, changes). En cas d'échec HTTP/réseau,
+    la tentative est journalisée puis retentée avec backoff exponentiel.
+    """
     from .models import Webhook, WebhookDelivery
 
     try:
@@ -23,19 +35,24 @@ def deliver_webhook(self, webhook_id, event, payload):
     except Webhook.DoesNotExist:
         return
 
-    body = json.dumps({"event": event, "data": payload}, default=str).encode()
+    event = envelope.get("event", "")
+    event_id = envelope.get("id", "")
+    body = json.dumps(envelope, default=str).encode()
     request = urllib.request.Request(
         hook.url,
         data=body,
         method="POST",
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "ticktick-clone-webhook/1",
+            "User-Agent": "ticktick-clone-webhook/2",
             "X-Webhook-Event": event,
+            "X-Webhook-Id": event_id,
             "X-Webhook-Signature": f"sha256={sign(hook.secret, body)}",
         },
     )
-    delivery = WebhookDelivery(webhook=hook, event=event, payload=payload)
+    delivery = WebhookDelivery(
+        webhook=hook, event=event, event_id=event_id, payload=envelope.get("data", {})
+    )
     try:
         with urllib.request.urlopen(request, timeout=10) as resp:
             delivery.status_code = resp.status

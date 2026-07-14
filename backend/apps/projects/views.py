@@ -1,6 +1,8 @@
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
+from apps.accounts.actors import get_actor
+
 from .models import Project, ProjectGroup, Section
 from .serializers import ProjectGroupSerializer, ProjectSerializer, SectionSerializer
 
@@ -24,16 +26,31 @@ class ProjectViewSet(OwnedModelViewSet):
     serializer_class = ProjectSerializer
     queryset = Project.objects.all()
 
+    def _emit(self, event, project):
+        from apps.webhooks.dispatch import emit
+
+        emit(self.request.user, event, ProjectSerializer(project).data,
+             actor=get_actor(self.request))
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+        self._emit("project.created", serializer.instance)
+
     def perform_destroy(self, instance):
         if instance.is_inbox:
             raise ValidationError("L'Inbox ne peut pas être supprimée.")
+        snapshot = ProjectSerializer(instance).data
         super().perform_destroy(instance)
+        from apps.webhooks.dispatch import emit
+
+        emit(self.request.user, "project.deleted", snapshot, actor=get_actor(self.request))
 
     def perform_update(self, serializer):
         instance = self.get_object()
         if instance.is_inbox and "name" in serializer.validated_data:
             raise ValidationError("Le nom de l'Inbox ne peut pas être modifié.")
         super().perform_update(serializer)
+        self._emit("project.updated", serializer.instance)
 
 
 class SectionViewSet(viewsets.ModelViewSet):

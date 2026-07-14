@@ -62,7 +62,8 @@ def test_task_created_triggers_matching_webhook(api, inbox, captured_deliveries)
 
     hook = Webhook.objects.create(user=inbox.user, url="https://x/h", events=[])
     api.post("/api/tasks/", {"project": inbox.id, "title": "T"}, format="json")
-    assert any(c[0] == hook.id and c[1] == "task.created" for c in captured_deliveries)
+    assert any(c[0] == hook.id and c[1]["event"] == "task.created"
+               for c in captured_deliveries)
 
 
 def test_event_filter_is_respected(api, inbox, captured_deliveries):
@@ -73,7 +74,7 @@ def test_event_filter_is_respected(api, inbox, captured_deliveries):
     assert captured_deliveries == []  # création ignorée
 
     api.post(f"/api/tasks/{task['id']}/complete/")
-    assert any(c[1] == "task.completed" for c in captured_deliveries)
+    assert any(c[1]["event"] == "task.completed" for c in captured_deliveries)
 
 
 def test_inactive_webhook_not_triggered(api, inbox, captured_deliveries):
@@ -90,7 +91,7 @@ def test_task_deleted_emits(api, inbox, captured_deliveries):
 
     Webhook.objects.create(user=inbox.user, url="https://x/h", events=["task.deleted"])
     api.delete(f"/api/tasks/{task['id']}/?permanent=1")
-    assert any(c[1] == "task.deleted" for c in captured_deliveries)
+    assert any(c[1]["event"] == "task.deleted" for c in captured_deliveries)
 
 
 # --- Livraison signée -------------------------------------------------------
@@ -116,12 +117,22 @@ def test_delivery_signs_body_and_logs(api, inbox, monkeypatch):
         yield Resp()
 
     monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
-    result = deliver_webhook.apply(args=[hook.id, "task.created", {"id": 1}]).get()
+    from apps.webhooks.dispatch import build_envelope
+
+    envelope = build_envelope("task.created", {"id": 1}, actor="agent:test")
+    result = deliver_webhook.apply(args=[hook.id, envelope]).get()
 
     assert result == 200
     expected = hmac.new(b"s3cr3t", seen["body"], hashlib.sha256).hexdigest()
     assert seen["sig"] == f"sha256={expected}"
     assert seen["event"] == "task.created"
-    assert json.loads(seen["body"]) == {"event": "task.created", "data": {"id": 1}}
+    body = json.loads(seen["body"])
+    # Enveloppe v2 : event/data conservés + métadonnées.
+    assert body["event"] == "task.created"
+    assert body["data"] == {"id": 1}
+    assert body["actor"] == "agent:test"
+    assert body["id"] == envelope["id"]
+    assert body["timestamp"]
     delivery = WebhookDelivery.objects.get(webhook=hook)
     assert delivery.success is True and delivery.status_code == 200
+    assert delivery.event_id == envelope["id"]

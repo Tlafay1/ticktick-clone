@@ -104,7 +104,7 @@ export interface Task {
   end_date: string | null
   is_all_day: boolean
   timezone_name: string
-  rrule: string
+  rrule: string | null
   repeat_from: 'due' | 'completion'
   tags: number[]
   sort_order: number
@@ -116,6 +116,10 @@ export interface Task {
   modified_at: string
   check_items: CheckItem[]
   reminders: NestedReminder[]
+  /** Acteur de la dernière écriture (en-tête X-Actor : "user", "agent:<slug>"…). */
+  last_actor: string
+  /** Revendication par un agent ("" côté base → null en sortie). */
+  claimed_by: string | null
 }
 
 /** Rappel imbriqué dans TaskSerializer (sans FK task). */
@@ -182,6 +186,7 @@ export interface FocusSession {
   start_at: string
   end_at: string | null
   duration_seconds: number
+  planned_seconds: number | null
 }
 
 export interface Countdown {

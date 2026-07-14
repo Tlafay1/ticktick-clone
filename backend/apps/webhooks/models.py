@@ -20,6 +20,14 @@ class Webhook(models.Model):
         "task.updated",
         "task.completed",
         "task.deleted",
+        "task.claimed",
+        "project.created",
+        "project.updated",
+        "project.deleted",
+        "habit.checkin",
+        "pomodoro.started",
+        "pomodoro.stopped",
+        "pomodoro.completed",
     ]
 
     user = models.ForeignKey(
@@ -49,6 +57,8 @@ class WebhookDelivery(models.Model):
         Webhook, on_delete=models.CASCADE, related_name="deliveries"
     )
     event = models.CharField(max_length=64)
+    # Id d'événement stable (idempotence côté consommateur, constant à travers les retries).
+    event_id = models.CharField(max_length=36, blank=True, db_index=True)
     payload = models.JSONField(default=dict)
     status_code = models.IntegerField(null=True, blank=True)
     success = models.BooleanField(default=False)

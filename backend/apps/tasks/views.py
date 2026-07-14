@@ -1,16 +1,22 @@
 import csv
+import datetime
 import io
 import json
+from datetime import timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import django_filters
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
+from apps.accounts.actors import get_actor
 from apps.projects.views import OwnedModelViewSet
 
 from .ticktick_import import import_ticktick_csv, looks_like_ticktick_csv
@@ -29,6 +35,31 @@ from .serializers import (
     TaskVersionSerializer,
     TemplateSerializer,
 )
+
+
+def _resolve_tz(name):
+    """ZoneInfo demandé (`?tz=`), UTC si absent ou invalide."""
+    if not name:
+        return datetime.timezone.utc
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return datetime.timezone.utc
+
+
+def _day_end_utc(local_date, tz):
+    """Instant UTC correspondant à la fin (minuit du lendemain) d'un jour local."""
+    start = datetime.datetime.combine(local_date, datetime.time.min, tzinfo=tz)
+    return (start + timedelta(days=1)).astimezone(datetime.timezone.utc)
+
+
+def _diff(before, after):
+    """Champs modifiés entre deux snapshots sérialisés : {champ: {old, new}}."""
+    return {
+        key: {"old": before.get(key), "new": after.get(key)}
+        for key in after
+        if before.get(key) != after.get(key)
+    }
 
 
 class TaskFilter(django_filters.FilterSet):
@@ -113,48 +144,59 @@ class TaskViewSet(OwnedModelViewSet):
         # ?has_attachments=true : filtre tâches avec PJ
         if params.get("has_attachments") in ("1", "true"):
             qs = qs.filter(attachments__isnull=False).distinct()
+        # ?overdue=1 : échéance passée ET tâche encore active (en retard).
+        if params.get("overdue") in ("1", "true"):
+            qs = qs.filter(due_date__lt=timezone.now(), status=Task.Status.NORMAL)
         return qs
 
     # ----- Webhooks -----
 
-    def _emit(self, event, task):
+    def _emit(self, event, task, changes=None):
         from apps.webhooks.dispatch import emit
 
-        emit(self.request.user, event, self.get_serializer(task).data)
+        emit(self.request.user, event, self.get_serializer(task).data,
+             actor=get_actor(self.request), changes=changes)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
         self._emit("task.created", serializer.instance)
 
     def perform_update(self, serializer):
+        before = self.get_serializer(serializer.instance).data
+        was_claimed = bool(serializer.instance.claimed_by)
         serializer.save()
-        self._emit("task.updated", serializer.instance)
+        after = self.get_serializer(serializer.instance).data
+        changes = _diff(before, after)
+        self._emit("task.updated", serializer.instance, changes=changes)
+        # Revendication d'une tâche par un agent : "" → renseigné.
+        if not was_claimed and serializer.instance.claimed_by:
+            self._emit("task.claimed", serializer.instance)
 
     # ----- Transitions -----
 
     @action(detail=True, methods=["post"])
     def complete(self, request, pk=None):
         task = self.get_object()
-        task.set_status(Task.Status.COMPLETED)
+        task.set_status(Task.Status.COMPLETED, actor=get_actor(request))
         self._emit("task.completed", task)
         return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["post"], url_path="wont-do")
     def wont_do(self, request, pk=None):
         task = self.get_object()
-        task.set_status(Task.Status.WONT_DO)
+        task.set_status(Task.Status.WONT_DO, actor=get_actor(request))
         return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["post"])
     def reopen(self, request, pk=None):
         task = self.get_object()
-        task.set_status(Task.Status.NORMAL)
+        task.set_status(Task.Status.NORMAL, actor=get_actor(request))
         return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["post"])
     def restore(self, request, pk=None):
         task = self.get_object()
-        task.restore()
+        task.restore(actor=get_actor(request))
         return Response(self.get_serializer(task).data)
 
     @action(detail=True, methods=["post"])
@@ -170,13 +212,13 @@ class TaskViewSet(OwnedModelViewSet):
         (ou ?permanent=1) → suppression définitive."""
         task = self.get_object()
         if task.trashed_at is None and request.query_params.get("permanent") != "1":
-            task.trash()
+            task.trash(actor=get_actor(request))
             return Response(status=status.HTTP_204_NO_CONTENT)
-        task_id = task.id
+        snapshot = self.get_serializer(task).data
         task.delete()
         from apps.webhooks.dispatch import emit
 
-        emit(request.user, "task.deleted", {"id": task_id})
+        emit(request.user, "task.deleted", snapshot, actor=get_actor(request))
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["post"], url_path="batch")
@@ -201,6 +243,128 @@ class TaskViewSet(OwnedModelViewSet):
     def empty_trash(self, request):
         Task.objects.filter(user=request.user).trashed().delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # ----- Vues agrégées pour agents -----
+
+    def _active(self):
+        """Tâches actives, non archivées, hors corbeille (base des vues agrégées)."""
+        return self.get_queryset().active().filter(archived_at__isnull=True)
+
+    @extend_schema(
+        parameters=[OpenApiParameter("tz", str, description="Fuseau (ex. Europe/Paris) ; défaut UTC.")],
+        responses=OpenApiTypes.OBJECT,
+        description="Tâches dues aujourd'hui + en retard, en un appel.",
+    )
+    @action(detail=False, methods=["get"], url_path="today")
+    def today(self, request):
+        """Tâches dues aujourd'hui + en retard, en un seul appel (module agents).
+
+        `?tz=` (ex. Europe/Paris) borne la journée dans ce fuseau ; défaut UTC.
+        """
+        tz = _resolve_tz(request.query_params.get("tz"))
+        now = timezone.now()
+        local_today = timezone.localtime(now, tz).date()
+        end_of_day = _day_end_utc(local_today, tz)
+        qs = self._active().filter(due_date__isnull=False, status=Task.Status.NORMAL)
+        overdue = qs.filter(due_date__lt=now)
+        today = qs.filter(due_date__gte=now, due_date__lt=end_of_day)
+        ser = self.get_serializer
+        return Response({
+            "date": local_today.isoformat(),
+            "today": ser(today, many=True).data,
+            "overdue": ser(overdue, many=True).data,
+        })
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("days", int, description="Nombre de jours (défaut 7, max 90)."),
+            OpenApiParameter("tz", str, description="Fuseau pour le regroupement ; défaut UTC."),
+        ],
+        responses=OpenApiTypes.OBJECT,
+        description="Nombre de tâches actives par jour d'échéance sur N jours.",
+    )
+    @action(detail=False, methods=["get"], url_path="density")
+    def density(self, request):
+        """Nombre de tâches actives par jour d'échéance sur les N prochains jours.
+
+        `?days=N` (défaut 7, max 90), `?tz=` pour le regroupement par jour.
+        Renvoie une ligne par jour, y compris les jours à zéro.
+        """
+        tz = _resolve_tz(request.query_params.get("tz"))
+        try:
+            days = int(request.query_params.get("days", 7))
+        except ValueError:
+            days = 7
+        days = max(1, min(days, 90))
+        now = timezone.now()
+        start_day = timezone.localtime(now, tz).date()
+        window_end = _day_end_utc(start_day + timedelta(days=days - 1), tz)
+        qs = self._active().filter(
+            due_date__isnull=False, status=Task.Status.NORMAL,
+            due_date__gte=now, due_date__lt=window_end,
+        )
+        counts = {}
+        for due in qs.values_list("due_date", flat=True):
+            key = timezone.localtime(due, tz).date().isoformat()
+            counts[key] = counts.get(key, 0) + 1
+        result = [
+            {"date": (start_day + timedelta(days=i)).isoformat(),
+             "count": counts.get((start_day + timedelta(days=i)).isoformat(), 0)}
+            for i in range(days)
+        ]
+        return Response(result)
+
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses=OpenApiTypes.OBJECT,
+        description="Complete/update/reschedule une liste d'ids ; résultat par item.",
+    )
+    @action(detail=False, methods=["post"], url_path="bulk")
+    def bulk(self, request):
+        """Opère sur une liste d'ids en un appel, résultat par item.
+
+        Body : {"action": "complete"|"update"|"reschedule", "ids": [...],
+                "data": {...}}. Jamais tout-ou-rien : chaque item renvoie
+        {"id", "ok", "error"?}. `update`/`reschedule` réutilisent le
+        TaskSerializer en PATCH partiel.
+        """
+        bulk_action = request.data.get("action")
+        ids = request.data.get("ids", [])
+        data = request.data.get("data", {}) or {}
+        if bulk_action not in ("complete", "update", "reschedule"):
+            return Response(
+                {"detail": "action doit être complete, update ou reschedule."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not isinstance(ids, list) or not ids:
+            return Response({"detail": "ids requis (liste non vide)."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if bulk_action == "reschedule":
+            data = {k: data.get(k) for k in ("start_date", "due_date") if k in data}
+        actor = get_actor(request)
+        results = []
+        for task_id in ids:
+            task = self.get_queryset().filter(pk=task_id).first()
+            if task is None:
+                results.append({"id": task_id, "ok": False, "error": "introuvable"})
+                continue
+            try:
+                if bulk_action == "complete":
+                    task.set_status(Task.Status.COMPLETED, actor=actor)
+                    self._emit("task.completed", task)
+                else:
+                    serializer = self.get_serializer(task, data=data, partial=True)
+                    serializer.is_valid(raise_exception=True)
+                    before = self.get_serializer(task).data
+                    serializer.save()
+                    after = self.get_serializer(serializer.instance).data
+                    self._emit("task.updated", serializer.instance,
+                               changes=_diff(before, after))
+                results.append({"id": task_id, "ok": True})
+            except Exception as exc:  # erreur par item, on continue
+                detail = exc.detail if hasattr(exc, "detail") else str(exc)
+                results.append({"id": task_id, "ok": False, "error": detail})
+        return Response({"results": results})
 
     @action(detail=True, methods=["post"])
     def archive(self, request, pk=None):

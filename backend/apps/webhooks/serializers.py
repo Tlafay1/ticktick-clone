@@ -27,4 +27,4 @@ class WebhookSerializer(serializers.ModelSerializer):
 class WebhookDeliverySerializer(serializers.ModelSerializer):
     class Meta:
         model = WebhookDelivery
-        fields = ["id", "event", "status_code", "success", "error", "created_at"]
+        fields = ["id", "event", "event_id", "status_code", "success", "error", "created_at"]

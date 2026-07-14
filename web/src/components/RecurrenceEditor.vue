@@ -6,7 +6,7 @@
 import { ref, computed, watch } from 'vue'
 import { buildRRule, parseRRule, RRULE_PRESETS, isRDates, parseRDates, buildRDates, type RRuleFreq } from '@/lib/rrule'
 
-const props = defineProps<{ modelValue: string; repeatFrom: 'due' | 'completion' }>()
+const props = defineProps<{ modelValue: string | null; repeatFrom: 'due' | 'completion' }>()
 const emit = defineEmits<{
   'update:modelValue': [string]
   'update:repeatFrom': ['due' | 'completion']

@@ -12,7 +12,7 @@ const TASK: Task = {
   tags: [1, 2], sort_order: 1000, estimated_pomos: 0, completed_at: null, trashed_at: null,
   archived_at: null,
   created_at: '2026-06-01T00:00:00Z', modified_at: '2026-06-01T00:00:00Z',
-  check_items: [], reminders: [],
+  check_items: [], reminders: [], last_actor: 'user', claimed_by: null,
 }
 
 describe('tasksToCSV', () => {
