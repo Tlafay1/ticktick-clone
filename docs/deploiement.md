@@ -16,13 +16,19 @@ servant le SPA Vue et relayant `/api`, `/media`, `/static`, `/ws` vers le backen
 # Clé Django
 python -c "import secrets; print(secrets.token_urlsafe(50))"
 
-# Paire VAPID (Web Push). Au choix :
-uv run vapid --gen            # depuis backend/, écrit private_key.pem / public_key.pem
-# ou en une ligne :
-uv run python -c "from py_vapid import Vapid01; v=Vapid01(); v.generate_keys(); \
-import base64; \
-print('PUB', base64.urlsafe_b64encode(v.public_key.public_bytes_raw()).decode().rstrip('=')); \
-print('PRIV', base64.urlsafe_b64encode(v.private_key.private_numbers().private_value.to_bytes(32,'big')).decode().rstrip('='))"
+# Paire VAPID (Web Push), depuis backend/ :
+uv run vapid --gen            # écrit private_key.pem / public_key.pem
+uv run python -c "
+from cryptography.hazmat.primitives import serialization
+import base64
+with open('private_key.pem', 'rb') as f:
+    priv = serialization.load_pem_private_key(f.read(), password=None)
+pub = priv.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+priv_val = priv.private_numbers().private_value.to_bytes(32, 'big')
+print('VAPID_PUBLIC_KEY=' + base64.urlsafe_b64encode(pub).decode().rstrip('='))
+print('VAPID_PRIVATE_KEY=' + base64.urlsafe_b64encode(priv_val).decode().rstrip('='))
+"
+rm private_key.pem public_key.pem
 ```
 
 La clé publique VAPID est aussi exposée au front via `GET /api/push/public-key/`.
