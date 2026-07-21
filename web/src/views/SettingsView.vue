@@ -6,6 +6,7 @@ import { useRouter } from 'vue-router'
 import { onMounted, ref } from 'vue'
 import { enablePushNotifications } from '@/composables/usePushNotifications'
 import { pushToast } from '@/composables/useToast'
+import { platform } from '@/platform'
 import { apiKeysApi, webhooksApi, calendarsApi, type ApiKeyInfo, type Webhook, type CalendarSubscription } from '@/api'
 
 const userStore = useUserStore()
@@ -13,7 +14,15 @@ const tagStore = useTagStore()
 const projectStore = useProjectStore()
 const router = useRouter()
 
-function enablePush() {
+async function enablePush() {
+  if (platform.name === 'capacitor') {
+    // Android : push FCM natif (déjà (ré)enregistré au démarrage de l'app,
+    // ce bouton relance juste l'enregistrement en cas d'échec/permission refusée).
+    const { registerPush } = await import('@/lib/push')
+    await registerPush()
+    pushToast('Notifications activées sur cet appareil.', 'success')
+    return
+  }
   enablePushNotifications()
 }
 
