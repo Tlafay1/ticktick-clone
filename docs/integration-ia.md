@@ -81,6 +81,31 @@ class TickTickManager:
 | stats focus par tag | `/api/focus-sessions/stats/` → `by_tag` |
 | webhooks sortants | `/api/webhooks/` (payload v2 : diff, acteur, id d'événement) |
 | origine d'une écriture | en-tête `X-Actor: agent:<slug>` → champ `last_actor` |
+| journal intime (Obsidian) | `POST /api/journal/entries/` (merge) · `GET /api/journal/entries/{date}/` · `PATCH`/`DELETE /api/journal/moments/{id}` |
+
+## 3 bis. Journal intime → daily note Obsidian (API 0.3.0)
+
+L'agent tient le journal de la journée racontée par l'utilisateur dans la
+section `## Journal` de la **daily note Obsidian** (plugin natif Daily Notes),
+poussée sur tous les appareils par le service `obsidian-sync`
+(voir [deploiement.md](deploiement.md)).
+
+- **Merge incrémental, pas one-shot** : chaque `POST /api/journal/entries/`
+  fusionne dans la journée — les listes `highlights` (moments positifs), `lows`
+  (négatifs), `anecdotes` et `feelings` (ressentis) **ajoutent** des moments
+  horodatés ; `mood` pose ou remplace le ressenti général. L'agent peut donc
+  noter un moment à midi, un autre à 17 h et le ressenti global au coucher.
+- `date` optionnelle (défaut : aujourd'hui dans le fuseau `tz`, ex.
+  `Europe/Paris` ; le fuseau fixe aussi l'affichage des heures dans la note).
+- La section est **entièrement re-rendue** à chaque écriture dans un format
+  contrôlé (sous-sections par type, moments horodatés, signature de l'acteur) ;
+  elle appartient à l'outil — toute édition manuelle y sera écrasée. Le reste
+  de la note n'est jamais touché.
+- `GET /api/journal/entries/{date}/` renvoie l'état structuré (moments avec
+  ids) + le markdown rendu : l'agent relit avant de compléter, et corrige via
+  `PATCH`/`DELETE /api/journal/moments/{id}`.
+- Chaque écriture émet l'événement webhook `journal.updated`.
+- Vault non configuré ou non monté → `503` explicite.
 
 ## 4. Limites à connaître
 

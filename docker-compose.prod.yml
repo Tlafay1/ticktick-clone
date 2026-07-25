@@ -42,8 +42,14 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
       VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL}
       FCM_SERVICE_ACCOUNT_JSON: ${FCM_SERVICE_ACCOUNT_JSON:-}
+      # Journal intime → vault Obsidian (vide = outil désactivé, l'API répond 503).
+      OBSIDIAN_VAULT_PATH: ${OBSIDIAN_VAULT_PATH:-}
+      JOURNAL_HEADING: ${JOURNAL_HEADING:-Journal}
+      JOURNAL_DAILY_FOLDER: ${JOURNAL_DAILY_FOLDER:-}
+      JOURNAL_DAILY_FORMAT: ${JOURNAL_DAILY_FORMAT:-}
     volumes:
       - media:/app/media
+      - obsidian_vault:/vault
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +123,25 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Client headless officiel Obsidian Sync : maintient le vault du volume
+  # partagé à jour dans les deux sens (l'app journal y écrit les daily notes).
+  # Token obtenu une fois en interactif : voir docs/deploiement.md.
+  obsidian-sync:
+    image: ghcr.io/belphemur/obsidian-headless-sync-docker:latest
+    environment:
+      OBSIDIAN_AUTH_TOKEN: ${OBSIDIAN_AUTH_TOKEN:-}
+      VAULT_NAME: ${OBSIDIAN_VAULT_NAME:-}
+      # Uniquement si le chiffrement de bout en bout est activé sur le vault.
+      VAULT_PASSWORD: ${OBSIDIAN_VAULT_PASSWORD:-}
+      # Le backend écrit dans le volume en root : aligner l'UID du client sync
+      # pour éviter les conflits de permissions sur les dossiers créés.
+      PUID: "0"
+      PGID: "0"
+    volumes:
+      - obsidian_vault:/vault
+      - obsidian_config:/config
+    restart: unless-stopped
+
   web:
     build: ./web
     ports:
@@ -136,3 +161,5 @@ volumes:
   postgres_data:
   redis_data:
   media:
+  obsidian_vault:
+  obsidian_config:

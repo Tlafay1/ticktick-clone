@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.countdown",
     "apps.sync",
     "apps.webhooks",
+    "apps.journal",
     "channels",
 ]
 
@@ -158,7 +159,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "TickTick Clone API",
     "DESCRIPTION": "API REST ouverte du clone TickTick self-hosted.",
-    "VERSION": "0.2.0",
+    "VERSION": "0.3.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
@@ -204,6 +205,14 @@ CELERY_BEAT_SCHEDULE = {
 # Web Push (VAPID) — notifications de rappel vers le PWA.
 VAPID_PUBLIC_KEY = os.environ.get("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY", "")
+
+# Journal intime : vault Obsidian synchronisé par le client headless (volume
+# partagé). Folder/format ne sont nécessaires que si `.obsidian/daily-notes.json`
+# n'est pas dans la sync (sinon la config du plugin natif Daily Notes est lue).
+OBSIDIAN_VAULT_PATH = os.environ.get("OBSIDIAN_VAULT_PATH", "")
+JOURNAL_HEADING = os.environ.get("JOURNAL_HEADING", "Journal")
+JOURNAL_DAILY_FOLDER = os.environ.get("JOURNAL_DAILY_FOLDER", "")
+JOURNAL_DAILY_FORMAT = os.environ.get("JOURNAL_DAILY_FORMAT", "")
 VAPID_ADMIN_EMAIL = os.environ.get("VAPID_ADMIN_EMAIL", "admin@example.com")
 
 # FCM (push Android) — service account collé dans UNE variable d'env (aucun

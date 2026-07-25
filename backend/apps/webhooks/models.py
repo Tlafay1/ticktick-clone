@@ -28,6 +28,7 @@ class Webhook(models.Model):
         "pomodoro.started",
         "pomodoro.stopped",
         "pomodoro.completed",
+        "journal.updated",
     ]
 
     user = models.ForeignKey(

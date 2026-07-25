@@ -10,6 +10,30 @@ changement de comportement à vérifier côté client.
 
 ---
 
+## 0.3.0 — Journal intime dans Obsidian
+
+Nouvelle catégorie d'outils : l'agent tient le journal de la journée racontée
+par l'utilisateur dans la section `## Journal` de la daily note Obsidian
+(plugin natif Daily Notes), synchronisée sur tous les appareils via le client
+headless officiel Obsidian Sync (service `obsidian-sync`, voir
+[deploiement.md](deploiement.md)). **Aucun endpoint existant modifié.**
+
+- **`POST /api/journal/entries/`** — merge incrémental d'une journée : `mood`
+  pose/remplace le ressenti général ; `highlights` / `lows` / `anecdotes` /
+  `feelings` ajoutent des moments horodatés. `date` optionnelle (défaut :
+  aujourd'hui dans le fuseau `tz`, qui fixe aussi l'affichage des heures dans
+  la note). Réponse : entrée complète + `rendered_markdown` + `note_path`.
+  La section de la note est **entièrement re-rendue** à chaque écriture
+  (machine-owned) ; le reste de la note n'est jamais touché.
+- **`GET /api/journal/entries/{date}/`** — état structuré du jour (moments avec
+  ids) + markdown rendu, pour relire avant de compléter.
+- **`PATCH` / `DELETE /api/journal/moments/{id}`** — corriger ou retirer un
+  moment déjà noté (re-rendu immédiat de la section).
+- Nouvel événement webhook **`journal.updated`** (émis à chaque écriture,
+  acteur `X-Actor` propagé dans l'enveloppe et sur chaque moment).
+- Vault Obsidian non configuré/indisponible → **`503`** explicite ; l'écriture
+  est alors annulée (aucun moment enregistré), le retry de l'agent est sûr.
+
 ## 0.2.0 — Support natif de l'écosystème d'agents
 
 Cible : supprimer le polling 5 min et les contournements côté agent. **Aucun

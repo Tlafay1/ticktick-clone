@@ -51,6 +51,37 @@ Les migrations s'appliquent automatiquement au démarrage du service `backend`
 - Activer les notifications dans les réglages → un rappel arrivé à échéance déclenche
   une notification Web Push (worker `beat` scrute toutes les minutes).
 
+## 5. Journal intime → Obsidian (optionnel)
+
+L'outil journal (API 0.3.0, [integration-ia.md](integration-ia.md)) écrit dans
+la daily note du vault, synchronisé par le service `obsidian-sync` — le
+**client headless officiel Obsidian Sync** (open beta, abonnement Sync requis),
+100 % sans GUI. Sans les variables ci-dessous, le service reste inactif et
+l'API journal répond 503 : le reste de la stack n'est pas affecté.
+
+1. **Obtenir le token** (une fois, depuis n'importe quelle machine avec Docker,
+   demande email + mot de passe + MFA Obsidian) :
+   ```bash
+   docker run --rm -it --entrypoint get-token \
+     ghcr.io/belphemur/obsidian-headless-sync-docker:latest
+   ```
+2. Renseigner dans l'environnement Dokploy : `OBSIDIAN_AUTH_TOKEN`,
+   `OBSIDIAN_VAULT_NAME` (nom exact, sensible à la casse),
+   `OBSIDIAN_VAULT_PASSWORD` (seulement si chiffrement de bout en bout) et
+   `OBSIDIAN_VAULT_PATH=/vault`.
+3. Redéployer : `obsidian-sync` télécharge le vault dans le volume partagé
+   `obsidian_vault`, puis le maintient à jour dans les deux sens.
+4. **Daily notes** : la config du plugin natif (dossier, format, template) est
+   lue dans `.obsidian/daily-notes.json` du vault. Vérifier que la config
+   `.obsidian` fait partie de la sync ; sinon, renseigner `JOURNAL_DAILY_FOLDER`
+   / `JOURNAL_DAILY_FORMAT` (tokens numériques `YYYY`, `MM`, `DD`…).
+5. Test : `POST /api/journal/entries/` avec une clé d'API
+   (voir [integration-ia.md](integration-ia.md)) → l'entrée apparaît sous
+   `## Journal` de la daily note sur tous les appareils.
+
+⚠️ La section `## Journal` est re-rendue en entier à chaque écriture de
+l'agent : ne pas y éditer à la main (le reste de la note reste intouché).
+
 ## Test local de la stack prod
 
 ```bash
