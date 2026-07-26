@@ -91,8 +91,18 @@ jobs:
         working-directory: mobile/android
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          sed -i "s/versionCode 1/versionCode ${GITHUB_RUN_NUMBER}/" app/build.gradle
-          sed -i "s/versionName \"1.0\"/versionName \"${VERSION}\"/" app/build.gradle
+          # versionCode dérivé du tag : monotone d'une release à l'autre, alors
+          # que github.run_number repart à 1 si le workflow est recréé — Android
+          # refuse alors définitivement la mise à jour ("app not installed").
+          IFS=. read -r MAJ MIN PAT <<< "${VERSION%%-*}"
+          CODE=$(( ${MAJ:-0} * 10000 + ${MIN:-0} * 100 + ${PAT:-0} ))
+          sed -i -E "s/versionCode [0-9]+/versionCode ${CODE}/" app/build.gradle
+          sed -i -E "s/versionName \"[^\"]+\"/versionName \"${VERSION}\"/" app/build.gradle
+          # Un sed qui ne matche plus livrerait un APK en versionCode 1,
+          # non installable par-dessus l'existant : on échoue bruyamment.
+          grep -qE "versionCode ${CODE}$" app/build.gradle || { echo "::error::versionCode non appliqué"; exit 1; }
+          grep -qF "versionName \"${VERSION}\"" app/build.gradle || { echo "::error::versionName non appliqué"; exit 1; }
+          echo "versionCode=${CODE} versionName=${VERSION}"
 
       - name: Build APK
         working-directory: mobile/android
