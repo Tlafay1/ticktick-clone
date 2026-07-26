@@ -165,6 +165,13 @@ SPECTACULAR_SETTINGS = {
 # CORS : ouvert en dev ; en prod, restreint aux origines déclarées.
 CORS_ALLOWED_ORIGINS = _env_list("DJANGO_CORS_ALLOWED_ORIGINS")
 CORS_ALLOW_ALL_ORIGINS = DEBUG or not CORS_ALLOWED_ORIGINS
+# Les clients natifs servent leur UI en local et ne peuvent donc pas être
+# déclarés dans DJANGO_CORS_ALLOWED_ORIGINS : Electron écoute sur un port
+# loopback tiré au hasard à chaque lancement, Capacitor sert l'app depuis
+# https://localhost. Sans ça, leur connexion échoue en « erreur réseau ».
+# L'API s'authentifie par JWT dans l'en-tête Authorization (aucun cookie de
+# session), donc ouvrir ces origines n'expose rien de plus.
+CORS_ALLOWED_ORIGIN_REGEXES = [r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"]
 
 # CSRF / sécurité derrière le reverse-proxy Dokploy (Traefik) en TLS.
 CSRF_TRUSTED_ORIGINS = _env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
