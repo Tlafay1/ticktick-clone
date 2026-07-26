@@ -74,6 +74,29 @@ jobs:
       - name: Build (vite)
         run: npx vite build
 
+  # Le paquet desktop n'a pas de typecheck ni de build vérifiable ici : ses
+  # tests portent sur les invariants qui ne cassent qu'à l'installation
+  # (dépendances CommonJS, script NSIS, contenu du paquet).
+  desktop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: desktop
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1 # les tests ne lancent pas Electron
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Installer les dépendances
+        run: npm ci
+      - name: Tests desktop (vitest)
+        run: npx vitest run
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25

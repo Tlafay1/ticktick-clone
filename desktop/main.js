@@ -161,7 +161,20 @@ ipcMain.on('tray-update', (_e, data) => updateTrayMenu(data.todayCount, data.foc
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
+// Une seule instance : le démarrage au login (fenêtre masquée) plus un clic sur
+// le raccourci donneraient plusieurs process — autant d'icônes de tray, de
+// serveurs loopback, et de fichiers verrouillés pour l'installeur.
+const isPrimaryInstance = app.requestSingleInstanceLock()
+
+app.on('second-instance', () => {
+  if (mainWindow) { mainWindow.show(); mainWindow.focus() }
+})
+
 app.whenReady().then(async () => {
+  if (!isPrimaryInstance) {
+    app.quit()
+    return
+  }
   if (app.isPackaged) {
     // web/dist est embarqué par electron-builder (extraResources → web-dist).
     webBaseUrl = await startWebServer(path.join(process.resourcesPath, 'web-dist'))
@@ -189,6 +202,15 @@ app.whenReady().then(async () => {
     checkUpdates()
     setInterval(checkUpdates, 4 * 3_600_000)
   }
+})
+
+// Fermeture demandée de l'extérieur : installeur d'une mise à jour, arrêt de
+// session Windows, taskkill. Sans ce drapeau, le handler `close` de la fenêtre
+// annulait la sortie et le process survivait indéfiniment : l'installeur
+// annonçait « l'app est déjà en cours d'exécution » puis abandonnait, et
+// electron-updater ne pouvait jamais appliquer sa mise à jour au redémarrage.
+app.on('before-quit', () => {
+  app.isQuitting = true
 })
 
 app.on('window-all-closed', (e) => {
