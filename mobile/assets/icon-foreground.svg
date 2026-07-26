@@ -1,0 +1,7 @@
+<!-- Calque avant de l'icône adaptative (API 26+) : canevas 108dp, coche
+     cantonnée à la zone sûre de 66dp (le lanceur recadre à 72dp et anime
+     jusqu'à ±18dp). Le fond est la couleur @color/ic_launcher_background. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 108 108">
+  <path d="M33.6 55.2 L46.8 68.1 L74.4 40.5" fill="none" stroke="#fff" stroke-width="6.75"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

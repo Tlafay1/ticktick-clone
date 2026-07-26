@@ -1,0 +1,8 @@
+<!-- Icône de l'app (source) — même marque que desktop/assets/icon.ico :
+     carré arrondi #4772fa + coche blanche. Régénérer les mipmaps Android
+     avec ./scripts/gen-android-icons.sh. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#4772fa"/>
+  <path d="M240 528 L416 700 L784 332" fill="none" stroke="#fff" stroke-width="96"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

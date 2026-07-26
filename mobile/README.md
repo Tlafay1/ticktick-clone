@@ -24,6 +24,22 @@ Sous WSL : le SDK Android étant côté Windows, lancer `npm run sync` dans WSL
 puis ouvrir `mobile/android` avec Android Studio **Windows** (le dossier est
 accessible via `\\wsl$\…`), ou cloner le repo côté Windows pour le build.
 
+## Icônes
+
+Les sources sont dans [assets/](assets/) (`icon.svg`, `icon-round.svg`,
+`icon-foreground.svg` = calque avant de l'icône adaptative). Les mipmaps PNG
+sont versionnés ; après modification d'une source :
+
+```bash
+./scripts/gen-android-icons.sh    # nécessite rsvg-convert (librsvg)
+```
+
+Le fond de l'icône adaptative est `@color/ic_launcher_background`
+([values/ic_launcher_background.xml](android/app/src/main/res/values/ic_launcher_background.xml)).
+La petite icône des notifications est
+[drawable/ic_stat_notify.xml](android/app/src/main/res/drawable/ic_stat_notify.xml)
+(monochrome, teintée par `iconColor`).
+
 ## Release automatisée
 
 Un tag `v*` sur le repo builde et attache l'APK à la GitHub Release
