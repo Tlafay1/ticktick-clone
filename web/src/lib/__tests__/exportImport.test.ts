@@ -13,6 +13,7 @@ const TASK: Task = {
   archived_at: null,
   created_at: '2026-06-01T00:00:00Z', modified_at: '2026-06-01T00:00:00Z',
   check_items: [], reminders: [], last_actor: 'user', claimed_by: null,
+  proposed: false, postpone_count: 0, blocker: '',
 }
 
 describe('tasksToCSV', () => {

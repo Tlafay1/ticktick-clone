@@ -65,6 +65,10 @@ export interface Project {
   sections: Section[]
   bg_color: string
   bg_image_url: string
+  /** Méthode : objectif actif (2 au plus) ou rangé au frigo. */
+  objective: '' | 'active' | 'fridge'
+  tasks_total: number
+  tasks_done: number
 }
 
 export interface Tag {
@@ -121,6 +125,95 @@ export interface Task {
   last_actor: string
   /** Revendication par un agent ("" côté base → null en sortie). */
   claimed_by: string | null
+  /** Proposition d'un agent en attente de validation (hors des vues). */
+  proposed: boolean
+  /** Reports d'une échéance arrivée ; bloquée au 3e. */
+  postpone_count: number
+  blocker: '' | Blocker
+}
+
+export type Blocker = 'boring' | 'unclear' | 'too_big' | 'unpleasant' | 'useless'
+
+// ── Méthode d'organisation (modules 36 à 41) ────────────────────────────────
+
+export interface MethodConfig {
+  level: number
+  jokers_per_month: number
+  today_limit: number
+  review_weekday: number
+  review_time: string
+  pause_until: string | null
+}
+
+export interface Slot {
+  id: number
+  weekday: number
+  start_time: string
+  duration_minutes: number
+  project: number | null
+  kind: 'work' | 'buffer'
+  created_at: string
+}
+
+export type OccurrenceStatus = 'planned' | 'honored' | 'missed' | 'excused' | 'recovered' | 'free'
+
+export interface SlotOccurrence {
+  id: number
+  slot: number | null
+  date: string
+  start_at: string
+  end_at: string
+  duration_minutes: number
+  kind: 'work' | 'buffer'
+  status: OccurrenceStatus
+  excuse_reason: '' | 'joker' | 'rouge' | 'pause'
+  task: number | null
+  next_action: { id: number; title: string; project: number } | null
+  started_at: string | null
+  focus_session: FocusSession | null
+  recovers: number | null
+}
+
+export type DayColor = 'green' | 'orange' | 'red'
+
+export interface MethodToday {
+  date: string
+  color: DayColor | null
+  paused: boolean
+  pause_until: string | null
+  level: number
+  today_limit: number
+  today_count: number
+  jokers_remaining: number
+  proposals_count: number
+  review_pending: boolean
+  occurrences: SlotOccurrence[]
+}
+
+export interface TaskBrief {
+  id: number
+  title: string
+  project: number
+}
+
+export interface WeeklyReview {
+  week_start: string
+  week_end: string
+  review_at: string
+  score: { honored: number; decided: number; rate: number | null }
+  occurrences: SlotOccurrence[]
+  completed: TaskBrief[]
+  focus_minutes: number
+  blocked: TaskBrief[]
+  amnesty: TaskBrief[]
+  inbox_count: number
+  proposals_count: number
+  day_colors: Record<DayColor, number>
+  jokers_remaining: number
+  level: number
+  suggestion: 'up' | 'down' | 'keep'
+  completed_at: string | null
+  notes: string
 }
 
 /** Rappel imbriqué dans TaskSerializer (sans FK task). */

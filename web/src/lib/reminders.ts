@@ -4,7 +4,7 @@
 // s'empiler (apps/tasks/tasks.py:reminder_tag).
 
 import { format } from 'date-fns'
-import type { Habit, NestedReminder, Task } from '@/types'
+import type { Habit, MethodConfig, NestedReminder, SlotOccurrence, Task } from '@/types'
 
 export interface PlannedNotification {
   /** Identifiant natif (entier 32 bits), stable pour une même occurrence. */
@@ -22,6 +22,8 @@ export interface PlannedNotification {
 
 // Plages d'identifiants natifs disjointes (les ids Android sont des int 32 bits).
 const HABIT_ID_BASE = 1_000_000_000
+const REVIEW_ID = 1_900_000_000
+const SLOT_ID_BASE = 2_000_000_000
 
 /** Instant de déclenchement d'un rappel de tâche, ou null si indéterminable. */
 export function reminderTriggerAt(task: Pick<Task, 'due_date'>, r: NestedReminder): Date | null {
@@ -103,4 +105,40 @@ export function plannedHabitReminders(habits: Habit[], now: Date, days = 7): Pla
     }
   }
   return out.sort((a, b) => a.at.getTime() - b.at.getTime())
+}
+
+/**
+ * Créneaux de la méthode à venir : une notification à l'heure, avec la
+ * prochaine action (un tampon sans rattrapage est du temps libre : silence).
+ */
+export function plannedSlotNotifications(occurrences: SlotOccurrence[], now: Date): PlannedNotification[] {
+  return occurrences
+    .filter(o => o.status === 'planned' && new Date(o.start_at) > now)
+    .filter(o => o.kind === 'work' || o.recovers !== null)
+    .map(o => ({
+      id: SLOT_ID_BASE + o.id,
+      tag: `slot-${o.id}`,
+      at: new Date(o.start_at),
+      title: o.kind === 'buffer' ? '🎯 Rattrapage' : "🎯 C'est l'heure",
+      body: o.next_action ? `${o.next_action.title} — 10 minutes suffisent.` : '10 minutes suffisent.',
+      url: '/today',
+      annoying: false,
+    }))
+}
+
+/** Prochain rendez-vous de revue (jour + heure murale de la config). */
+export function nextReviewNotification(config: MethodConfig, now: Date): PlannedNotification {
+  const [h, m] = config.review_time.split(':').map(Number)
+  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m)
+  at.setDate(at.getDate() + ((config.review_weekday - pyWeekday(now) + 7) % 7))
+  if (at <= now) at.setDate(at.getDate() + 7)
+  return {
+    id: REVIEW_ID,
+    tag: `review-${format(at, 'yyyy-MM-dd')}`,
+    at,
+    title: '🗓️ Ta revue de la semaine',
+    body: '10 minutes pour décider à froid.',
+    url: '/review',
+    annoying: false,
+  }
 }

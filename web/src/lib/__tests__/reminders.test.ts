@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { plannedHabitReminders, plannedTaskReminders } from '../reminders'
-import type { Habit, Task } from '@/types'
+import { nextReviewNotification, plannedHabitReminders, plannedSlotNotifications, plannedTaskReminders } from '../reminders'
+import type { Habit, MethodConfig, SlotOccurrence, Task } from '@/types'
 
 const NOW = new Date(2026, 9, 7, 18, 0) // mercredi 7 octobre 2026, 18:00 locale
 
@@ -75,5 +75,52 @@ describe('plannedHabitReminders', () => {
 
   it('ne devine pas les jours futurs d\'une habitude à intervalle', () => {
     expect(plannedHabitReminders([habit({ frequency: 'interval' })], NOW)).toHaveLength(1)
+  })
+})
+
+function occ(over: Partial<SlotOccurrence> = {}): SlotOccurrence {
+  return {
+    id: 4, slot: 1, date: '2026-10-07', duration_minutes: 25, kind: 'work',
+    start_at: new Date(2026, 9, 7, 20, 30).toISOString(),
+    end_at: new Date(2026, 9, 7, 20, 55).toISOString(),
+    status: 'planned', excuse_reason: '', task: null,
+    next_action: { id: 9, title: 'Lab SQLi 1', project: 2 },
+    started_at: null, focus_session: null, recovers: null,
+    ...over,
+  }
+}
+
+describe('plannedSlotNotifications', () => {
+  it('notifie les créneaux à venir avec leur prochaine action', () => {
+    const [n] = plannedSlotNotifications([occ()], NOW)
+    expect(n.at).toEqual(new Date(2026, 9, 7, 20, 30))
+    expect(n.body).toBe('Lab SQLi 1 — 10 minutes suffisent.')
+    expect(n.id).toBeLessThan(2 ** 31) // id Android 32 bits
+  })
+
+  it('silence : excusé, passé, ou tampon sans rattrapage', () => {
+    expect(plannedSlotNotifications([
+      occ({ status: 'excused' }),
+      occ({ start_at: new Date(2026, 9, 7, 17, 0).toISOString() }),
+      occ({ kind: 'buffer' }),
+    ], NOW)).toEqual([])
+    expect(plannedSlotNotifications([occ({ kind: 'buffer', recovers: 3 })], NOW)[0].title)
+      .toBe('🎯 Rattrapage')
+  })
+})
+
+describe('nextReviewNotification', () => {
+  const config: MethodConfig = {
+    level: 1, jokers_per_month: 2, today_limit: 3,
+    review_weekday: 6, review_time: '18:00:00', pause_until: null,
+  }
+
+  it('vise le prochain dimanche 18:00 (mercredi → dimanche de la même semaine)', () => {
+    expect(nextReviewNotification(config, NOW).at).toEqual(new Date(2026, 9, 11, 18, 0))
+  })
+
+  it('passe à la semaine suivante une fois l\'heure dépassée', () => {
+    const sundayEvening = new Date(2026, 9, 11, 19, 0)
+    expect(nextReviewNotification(config, sundayEvening).at).toEqual(new Date(2026, 9, 18, 18, 0))
   })
 })

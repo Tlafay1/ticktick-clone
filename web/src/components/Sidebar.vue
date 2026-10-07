@@ -95,10 +95,11 @@ const projectCounts = ref<Record<number, number>>({})
 async function loadCounts() {
   const { tasksApi } = await import('@/api')
   try {
-    const [today, next7, all] = await Promise.all([
+    const [today, next7, all, proposals] = await Promise.all([
       tasksApi.list({ ...taskStore.smartParams('today'), smart: 1 }),
       tasksApi.list({ ...taskStore.smartParams('next7'), smart: 1 }),
       tasksApi.list({ smart: 1, status: 0 }),
+      tasksApi.list({ proposed: 1, status: 0 }),
     ])
     const byProject: Record<number, number> = {}
     for (const t of all) byProject[t.project] = (byProject[t.project] ?? 0) + 1
@@ -107,6 +108,7 @@ async function loadCounts() {
       today: today.length,
       next7: next7.length,
       inbox: projectStore.inbox ? (byProject[projectStore.inbox.id] ?? 0) : 0,
+      proposals: proposals.length,
     }
     updateTray({ todayCount: today.length })
   } catch { /* hors-ligne : on garde les derniers compteurs */ }
@@ -297,6 +299,19 @@ function cycleTheme() {
       </RouterLink>
     </nav>
 
+    <!-- Méthode : la revue (le seul moment où l'on décide) et les propositions des agents. -->
+    <nav class="nav-section">
+      <RouterLink to="/review" class="nav-item">
+        <span class="nav-icon"><Icon name="clipboard-check" /></span>
+        <span class="nav-label">Revue de la semaine</span>
+      </RouterLink>
+      <RouterLink to="/proposals" class="nav-item">
+        <span class="nav-icon"><Icon name="sparkles" /></span>
+        <span class="nav-label">Propositions</span>
+        <span v-if="smartCounts.proposals" class="nav-count">{{ smartCounts.proposals }}</span>
+      </RouterLink>
+    </nav>
+
     <!-- Outils : sur desktop ils vivent dans le rail d'icônes ; ces entrées
          ne servent qu'au tiroir mobile (rail masqué). -->
     <div class="section-header mobile-only">
@@ -372,8 +387,11 @@ function cycleTheme() {
           >
             <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
             <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
-            <span class="nav-label">{{ p.name }}</span>
+            <span class="nav-label">{{ p.objective === 'active' ? '🎯 ' : p.objective === 'fridge' ? '🧊 ' : '' }}{{ p.name }}</span>
             <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
+            <span v-if="p.objective === 'active' && p.tasks_total" class="objective-bar" :title="`${p.tasks_done}/${p.tasks_total} terminées`">
+              <span :style="{ width: `${(100 * p.tasks_done) / p.tasks_total}%` }" />
+            </span>
             <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
           </div>
         </template>
@@ -416,8 +434,11 @@ function cycleTheme() {
       >
         <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
         <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
-        <span class="nav-label">{{ p.name }}</span>
+        <span class="nav-label">{{ p.objective === 'active' ? '🎯 ' : p.objective === 'fridge' ? '🧊 ' : '' }}{{ p.name }}</span>
         <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
+        <span v-if="p.objective === 'active' && p.tasks_total" class="objective-bar" :title="`${p.tasks_done}/${p.tasks_total} terminées`">
+          <span :style="{ width: `${(100 * p.tasks_done) / p.tasks_total}%` }" />
+        </span>
         <button class="project-edit-btn icon-btn" @click.stop="showProjectMenu($event, p)"><Icon name="dots" :size="14" /></button>
       </div>
 
@@ -560,6 +581,13 @@ function cycleTheme() {
 </template>
 
 <style scoped>
+/* Progression d'un objectif actif (méthode M38) : fine barre sous la ligne. */
+.project-item { position: relative; }
+.objective-bar {
+  position: absolute; left: 30px; right: 10px; bottom: 2px; height: 2px;
+  border-radius: 1px; background: var(--border); overflow: hidden;
+}
+.objective-bar > span { display: block; height: 100%; background: var(--primary); }
 .sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);

@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { Task } from '@/types'
+import { useRouter } from 'vue-router'
+import type { Blocker, Task } from '@/types'
 import { dueLabel, dueTone } from '@/lib/dates'
+import { BLOCKERS } from '@/lib/method'
+import { startTenMinutes } from '@/composables/useStartTask'
+import { pushToast } from '@/composables/useToast'
 import { useTaskStore } from '@/stores/tasks'
 import { useTagStore } from '@/stores/tags'
 import { useProjectStore } from '@/stores/projects'
@@ -64,6 +68,22 @@ function toggleComplete() {
   }
 }
 
+// Méthode : une tâche reportée 3 fois est « bloquée » → diagnostic en un clic.
+const POSTPONE_THRESHOLD = 3
+const router = useRouter()
+const isBlocked = computed(() => props.task.status === 0 && props.task.postpone_count >= POSTPONE_THRESHOLD)
+const blockerLabel = computed(() => BLOCKERS.find(b => b.key === props.task.blocker)?.label ?? '')
+const diagnosing = ref(false)
+
+async function diagnose(reason: Blocker) {
+  diagnosing.value = false
+  pushToast(await store.diagnose(props.task.id, reason), 'info', 8000)
+}
+
+function startNow() {
+  startTenMinutes(props.task.id, router).catch(() => pushToast('Impossible de démarrer', 'error'))
+}
+
 const ctx = ref<{ x: number; y: number } | null>(null)
 
 function openContext(e: MouseEvent) {
@@ -105,14 +125,28 @@ function openContext(e: MouseEvent) {
       <div v-if="task.progress > 0 && !isCompleted && !isWontDo" class="task-progress-bar">
         <div class="task-progress-fill" :style="`width:${task.progress}%`" />
       </div>
-      <div v-if="dueLabel_ || childCounts.total || task.check_items?.length" class="task-meta">
+      <div v-if="dueLabel_ || childCounts.total || task.check_items?.length || isBlocked || blockerLabel" class="task-meta">
         <span v-if="dueLabel_" class="task-due" :class="`due-${dueTone_}`">{{ dueLabel_ }}</span>
+        <button
+          v-if="isBlocked"
+          class="blocked-chip"
+          title="Reportée plusieurs fois : qu'est-ce qui coince ?"
+          @click.stop="diagnosing = !diagnosing"
+        >Bloquée · qu'est-ce qui coince ?</button>
+        <span v-else-if="blockerLabel && task.status === 0" class="task-checks">⚑ {{ blockerLabel }}</span>
         <span v-if="childCounts.total" class="task-checks">↳ {{ childCounts.done }}/{{ childCounts.total }}</span>
         <span v-if="task.check_items?.length" class="task-checks">
           ☑ {{ task.check_items.filter(c => c.is_done).length }}/{{ task.check_items.length }}
         </span>
       </div>
     </div>
+
+    <button
+      v-if="task.status === 0"
+      class="start-btn"
+      title="Juste commencer : 10 minutes"
+      @click.stop="startNow"
+    >▶ 10 min</button>
 
     <div v-if="visibleTags.length || projectName" class="task-right">
       <span
@@ -123,6 +157,10 @@ function openContext(e: MouseEvent) {
       >{{ tag!.name }}</span>
       <span v-if="projectName" class="task-list-name">{{ projectName }}</span>
     </div>
+  </div>
+
+  <div v-if="diagnosing" class="diagnose-row" @click.stop>
+    <button v-for="b in BLOCKERS" :key="b.key" class="diag-chip" @click="diagnose(b.key)">{{ b.label }}</button>
   </div>
 
   <TaskContextMenu
@@ -189,6 +227,43 @@ function openContext(e: MouseEvent) {
 }
 
 .task-checks { font-size: 11px; color: var(--text-muted); }
+.blocked-chip {
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--prio-medium) 18%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.diagnose-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 14px 8px 46px; }
+.diag-chip {
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.diag-chip:hover { background: var(--bg-hover); }
+.start-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--primary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.task-row:hover .start-btn, .task-row.selected .start-btn { opacity: 1; }
+@media (hover: none) { .start-btn { display: none; } }
 .task-due { font-size: 11px; }
 .due-overdue { color: var(--danger); }
 .due-today { color: var(--primary); }

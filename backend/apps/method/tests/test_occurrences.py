@@ -68,3 +68,20 @@ def test_lifting_pause_restores_planned(api, user, clock):
     assert api.get("/api/slot-occurrences/").json()[0]["status"] == "excused"
     api.patch("/api/method/config/", {"pause_until": None}, format="json")
     assert api.get("/api/slot-occurrences/").json()[0]["status"] == "planned"
+
+
+def test_review_pending_from_upcoming_until_done(api, user, clock):
+    api.post("/api/slots/", {"weekday": 0, "start_time": "20:30"}, format="json")
+    assert api.get("/api/method/today/").json()["review_pending"] is False
+    clock.at(18, 16, 0)  # dimanche, 2 h avant la revue
+    assert api.get("/api/method/today/").json()["review_pending"] is True
+    clock.at(19, 9, 0)  # lundi : la revue d'hier attend toujours
+    assert api.get("/api/method/today/").json()["review_pending"] is True
+    api.post("/api/method/review/", {}, format="json")
+    assert api.get("/api/method/today/").json()["review_pending"] is False
+
+
+def test_new_user_has_no_pending_review(api, user, clock):
+    clock.at(19, 9, 0)
+    api.post("/api/slots/", {"weekday": 2, "start_time": "20:30"}, format="json")
+    assert api.get("/api/method/today/").json()["review_pending"] is False

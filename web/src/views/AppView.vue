@@ -11,6 +11,7 @@ import TaskItem from '@/components/TaskItem.vue'
 import QuickAdd from '@/components/QuickAdd.vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 import SearchBar from '@/components/SearchBar.vue'
+import MethodTodayPanel from '@/components/MethodTodayPanel.vue'
 import Icon from '@/components/Icon.vue'
 import { tasksApi } from '@/api'
 import { useDragSort } from '@/composables/useDragSort'
@@ -496,6 +497,8 @@ watch(() => route.fullPath, loadView)
           </button>
         </div>
       </div>
+
+      <MethodTodayPanel v-if="route.name === 'smart-list' && route.params.smartList === 'today'" />
 
       <SearchBar v-if="!isTrash" @reset="loadView" />
 

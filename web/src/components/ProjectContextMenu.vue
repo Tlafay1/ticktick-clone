@@ -60,6 +60,12 @@ async function archive() {
   close()
 }
 
+// Méthode (M38) : 2 objectifs actifs au plus — le serveur refuse le 3e (toast).
+async function setObjective(objective: Project['objective']) {
+  await projectStore.update(props.project.id, { objective })
+  close()
+}
+
 async function moveTo(groupId: number | null) {
   await projectStore.update(props.project.id, { group: groupId })
   close()
@@ -177,6 +183,19 @@ onUnmounted(() => document.removeEventListener('mousedown', onClickOutside))
           </button>
         </div>
       </div>
+
+      <!-- Objectif (méthode) -->
+      <template v-if="!project.is_inbox && !project.is_smart">
+        <button v-if="project.objective !== 'active'" class="menu-item" @click="setObjective('active')">
+          <span class="mi-icon">🎯</span> Objectif actif
+        </button>
+        <button v-if="project.objective !== 'fridge'" class="menu-item" @click="setObjective('fridge')">
+          <span class="mi-icon">🧊</span> Mettre au frigo
+        </button>
+        <button v-if="project.objective" class="menu-item" @click="setObjective('')">
+          <span class="mi-icon">↩</span> Retirer des objectifs
+        </button>
+      </template>
 
       <!-- Archiver -->
       <button class="menu-item" @click="archive">

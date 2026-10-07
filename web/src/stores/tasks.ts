@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { tasksApi } from '@/api'
 import type { TaskQuery } from '@/api'
-import type { Task } from '@/types'
+import type { Blocker, Task } from '@/types'
 import { addDays, startOfDay } from 'date-fns'
 import { wsSend } from '@/composables/useRealtimeSync'
 import { playCompletionSound } from '@/lib/sound'
@@ -109,6 +109,18 @@ export const useTaskStore = defineStore('tasks', () => {
     return t
   }
 
+  /** Diagnostic d'une tâche bloquée (méthode M40) → remède à afficher. */
+  async function diagnose(id: number, reason: Blocker) {
+    const { task: t, remedy } = await tasksApi.diagnose(id, reason)
+    const idx = tasks.value.findIndex((x: Task) => x.id === id)
+    if (idx >= 0) tasks.value[idx] = t
+    wsSend('task.updated', { task: t as unknown as Record<string, unknown> })
+    if (t.status === -1) {
+      setTimeout(() => { tasks.value = tasks.value.filter((x: Task) => x.id !== id) }, 800)
+    }
+    return remedy
+  }
+
   async function duplicate(id: number) {
     const t = await tasksApi.duplicate(id)
     const idx = tasks.value.findIndex((x: Task) => x.id === id)
@@ -140,5 +152,5 @@ export const useTaskStore = defineStore('tasks', () => {
 
   const selected = () => tasks.value.find((t: Task) => t.id === selectedId.value) ?? null
 
-  return { tasks, loading, selectedId, selected, smartParams, loadSmartList, loadProject, create, update, complete, wontDo, reopen, remove, duplicate, pin, moveTo, select }
+  return { tasks, loading, selectedId, selected, smartParams, loadSmartList, loadProject, create, update, complete, wontDo, reopen, remove, duplicate, pin, moveTo, select, diagnose }
 })

@@ -783,7 +783,7 @@ describe('Jalon 8 — finitions', () => {
       { id: 7, view_mode: 'kanban', name: 'Mon kanban', is_inbox: false, archived: false,
         color: '', icon: '', sort_order: 0, hidden_from_smart_lists: false,
         is_smart: false, filter_rules: [], sections: [], group: null,
-        bg_color: '', bg_image_url: '' },
+        bg_color: '', bg_image_url: '', objective: '', tasks_total: 0, tasks_done: 0 },
     ] as Project[]
     const proj = store.projects.find(p => p.id === 7)
     expect(proj?.view_mode).toBe('kanban')
@@ -794,12 +794,40 @@ describe('Jalon 8 — finitions', () => {
       id: 1, name: 'Ma liste', group: null, color: '', icon: '', view_mode: 'list',
       sort_order: 0, is_inbox: false, archived: false, hidden_from_smart_lists: false,
       is_smart: false, filter_rules: [], sections: [],
-      bg_color: '#fef9c3', bg_image_url: '',
+      bg_color: '#fef9c3', bg_image_url: '', objective: '', tasks_total: 0, tasks_done: 0,
     }
     expect(p.bg_color).toBe('#fef9c3')
     expect(p.bg_image_url).toBe('')
     // Un projet sans fond
     const p2: Partial<Project> = { bg_color: '', bg_image_url: '' }
     expect(p2.bg_color).toBe('')
+  })
+})
+
+describe('Jalon 9 — méthode d\'organisation', () => {
+  // Détail : lib/__tests__/method.test.ts, reminders.test.ts,
+  // components/__tests__/MethodTodayPanel.test.ts ; contrat API : spec backend.
+  it('M36/M41 — la revue et les propositions ont leur route', async () => {
+    const { routes } = await import('@/router/routes')
+    const paths = routes.map(r => r.path)
+    expect(paths).toContain('/review')
+    expect(paths).toContain('/proposals')
+  })
+
+  it('M36/M37 — le client expose créneaux, occurrences et tableau de bord', async () => {
+    const api = await import('@/api')
+    expect(typeof api.slotsApi.create).toBe('function')
+    expect(typeof api.occurrencesApi.start).toBe('function')
+    expect(typeof api.occurrencesApi.joker).toBe('function')
+    expect(typeof api.methodApi.today).toBe('function')
+    expect(typeof api.methodApi.completeReview).toBe('function')
+  })
+
+  it('M40 — démarrer reprend la règle serveur (jour même, 1 h d\'avance max)', async () => {
+    const { canStart } = await import('@/lib/method')
+    const start = new Date(2026, 9, 12, 20, 30)
+    const occ = { status: 'planned', start_at: start.toISOString() } as Parameters<typeof canStart>[0]
+    expect(canStart(occ, new Date(2026, 9, 12, 19, 45))).toBe(true)
+    expect(canStart(occ, new Date(2026, 9, 12, 19, 0))).toBe(false)
   })
 })

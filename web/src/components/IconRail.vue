@@ -17,6 +17,7 @@ const TOP_ITEMS = [
   { key: 'calendar',   icon: 'calendar',     title: 'Calendrier',       to: '/calendar' },
   { key: 'eisenhower', icon: 'grid',         title: 'Matrice Eisenhower', to: '/eisenhower' },
   { key: 'focus',      icon: 'timer',        title: 'Focus',            to: '/focus' },
+  { key: 'review',     icon: 'clipboard-check', title: 'Revue de la semaine', to: '/review' },
   { key: 'habits',     icon: 'sprout',       title: 'Habitudes',        to: '/habits' },
   { key: 'timeline',   icon: 'timeline',     title: 'Timeline',         to: '/timeline' },
   { key: 'countdown',  icon: 'hourglass',    title: 'Compte à rebours', to: '/countdown' },

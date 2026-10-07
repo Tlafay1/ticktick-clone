@@ -1,10 +1,13 @@
 import { onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { habitsApi, tasksApi } from '@/api'
+import { habitsApi, methodApi, occurrencesApi, tasksApi } from '@/api'
 import { http } from '@/api/client'
 import { electronAPI } from '@/lib/electron'
-import { plannedHabitReminders, plannedTaskReminders, type PlannedNotification } from '@/lib/reminders'
-import type { Task, User } from '@/types'
+import {
+  nextReviewNotification, plannedHabitReminders, plannedSlotNotifications, plannedTaskReminders,
+  type PlannedNotification,
+} from '@/lib/reminders'
+import type { MethodConfig, Task, User } from '@/types'
 
 // Rappels côté client, toutes les 60 secondes :
 // - web / Electron : notifications en page pour les rappels dus maintenant ;
@@ -77,11 +80,32 @@ export function useReminderNotifications() {
     notif.onclose = () => stopRepeat(n.tag)
   }
 
+  // Réglages de la méthode (heure de revue) : relus au plus une fois par heure.
+  let methodConfig: MethodConfig | null = null
+  let methodConfigAt = 0
+
+  /** Créneaux et revue dus maintenant (Electron n'a pas de Web Push). */
+  async function dueMethodNotifications(from: Date, to: Date): Promise<PlannedNotification[]> {
+    const today = new Date().toLocaleDateString('sv-SE')
+    const occurrences = await occurrencesApi.list(today, today).catch(() => [])
+    if (!occurrences.length) return []
+    if (Date.now() - methodConfigAt > 3_600_000) {
+      methodConfig = await methodApi.config().catch(() => methodConfig)
+      methodConfigAt = Date.now()
+    }
+    const review = methodConfig ? [nextReviewNotification(methodConfig, from)] : []
+    return [...plannedSlotNotifications(occurrences, from), ...review].filter(n => n.at <= to)
+  }
+
   async function checkInPage(tasks: Task[]) {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
     const now = Date.now()
     // Dû dans la minute qui vient, ou en retard de moins de 5 min.
-    const due = plannedTaskReminders(tasks, new Date(now - 300_000), new Date(now + 60_000))
+    const from = new Date(now - 300_000)
+    const to = new Date(now + 60_000)
+    // La méthode ne doit jamais priver des rappels de tâches (données partielles, hors ligne…).
+    const method = await dueMethodNotifications(from, to).catch(() => [])
+    const due = [...plannedTaskReminders(tasks, from, to), ...method]
     const live = new Set(due.map(n => n.tag))
     for (const tag of [...repeats.keys()]) if (!live.has(tag)) stopRepeat(tag)
 
@@ -89,11 +113,12 @@ export function useReminderNotifications() {
     for (const n of due) {
       if (notified[n.tag]) continue
       markNotified(n.tag)
-      // Sous Electron : notification native du main (actions Terminer /
-      // Snooze 10 min gérées côté desktop, id = tâche à terminer).
+      // Sous Electron : notification native du main pour les rappels de tâche
+      // (actions Terminer / Snooze 10 min, id = tâche à terminer). Créneaux et
+      // revue n'ont pas de tâche à terminer : notification standard.
       const eapi = electronAPI()
-      if (eapi) {
-        eapi.notify({ id: n.taskId ?? n.id, title: n.title, body: n.body, persistent: n.annoying })
+      if (eapi && n.taskId) {
+        eapi.notify({ id: n.taskId, title: n.title, body: n.body, persistent: n.annoying })
         continue
       }
       showInPage(n)
@@ -102,12 +127,19 @@ export function useReminderNotifications() {
 
   async function syncNative(tasks: Task[]) {
     const now = new Date()
-    let habits: Awaited<ReturnType<typeof habitsApi.list>> = []
-    try { habits = await habitsApi.list() } catch { /* hors ligne : rappels de tâches seuls */ }
     const horizon = new Date(now.getTime() + NATIVE_HORIZON_DAYS * 86_400_000)
+    const day = (d: Date) => d.toLocaleDateString('sv-SE') // AAAA-MM-JJ locale
+    // Hors ligne : chaque source manquante est simplement ignorée.
+    const [habits, occurrences, config] = await Promise.all([
+      habitsApi.list().catch(() => []),
+      occurrencesApi.list(day(now), day(horizon)).catch(() => []),
+      methodApi.config().catch(() => null),
+    ])
     const planned = [
       ...plannedTaskReminders(tasks, now, horizon),
       ...plannedHabitReminders(habits, now, NATIVE_HORIZON_DAYS),
+      ...plannedSlotNotifications(occurrences, now),
+      ...(config && occurrences.length ? [nextReviewNotification(config, now)] : []),
     ].sort((a, b) => a.at.getTime() - b.at.getTime()).slice(0, NATIVE_MAX)
 
     // Reprogrammer seulement si le plan a changé (évite de tout annuler chaque minute).

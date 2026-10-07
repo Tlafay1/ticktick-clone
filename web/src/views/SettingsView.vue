@@ -7,6 +7,7 @@ import { onMounted, ref } from 'vue'
 import { enablePushNotifications } from '@/composables/usePushNotifications'
 import { pushToast } from '@/composables/useToast'
 import { apiKeysApi, webhooksApi, calendarsApi, type ApiKeyInfo, type Webhook, type CalendarSubscription } from '@/api'
+import MethodSettings from '@/components/MethodSettings.vue'
 
 const userStore = useUserStore()
 const tagStore = useTagStore()
@@ -211,6 +212,8 @@ onMounted(async () => {
 
     <main class="settings-main">
       <h1 class="settings-title">Paramètres</h1>
+
+      <MethodSettings id="methode" />
 
       <section class="settings-section">
         <h2 class="section-title">Apparence</h2>

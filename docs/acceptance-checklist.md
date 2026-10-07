@@ -79,3 +79,12 @@ instrumentation) seulement si la régression devient coûteuse.
 - [ ] M12 — Offline : créer/éditer hors-ligne, puis fusion à la reconnexion
 - [ ] M26 — Daily review : notification du matin/soir à l'heure configurée
 - [ ] M8 (thèmes) — Clair / sombre / auto + presets sur les 3 clients
+
+## Méthode d'organisation (Jalon 9)
+
+- [ ] M36 — Android : la notification d'un créneau arrive à l'heure, app fermée, avec la prochaine action
+- [ ] M36 — « ▶ 10 min » depuis Aujourd'hui ouvre Focus avec le minuteur du contrat en cours
+- [ ] M36 — À la fin des 10 min, « Continuer 15 min » enchaîne sur la même tâche
+- [ ] M37 — Journée rouge : les créneaux restants passent « Excusé (journée rouge) »
+- [ ] M41 — Dimanche 18:00 : notification de revue (web, desktop, Android) puis revue validée
+- [ ] M39 — Une proposition d'agent n'apparaît dans aucune liste avant « Accepter »

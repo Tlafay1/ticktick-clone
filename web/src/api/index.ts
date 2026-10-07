@@ -1,5 +1,12 @@
 import type {
   ActivityEntry,
+  Blocker,
+  DayColor,
+  MethodConfig,
+  MethodToday,
+  Slot,
+  SlotOccurrence,
+  WeeklyReview,
   Attachment,
   CheckItem,
   Comment,
@@ -79,6 +86,8 @@ export const tasksApi = {
   searchHistory: () => http.get<Array<{ id: number; query: string; created_at: string }>>('/api/search-history/'),
   clearSearchHistory: () => http.delete('/api/search-history/clear/'),
   activity: (id: number) => http.get<ActivityEntry[]>(`/api/tasks/${id}/activity/`),
+  diagnose: (id: number, reason: Blocker) =>
+    http.post<{ task: Task; remedy: string }>(`/api/tasks/${id}/diagnose/`, { reason }),
   importFile: async (file: File, dedupe = false) => {
     const fd = new FormData()
     fd.append('file', file)
@@ -138,6 +147,11 @@ export const focusApi = {
   create: (data: Partial<FocusSession>) => http.post<FocusSession>('/api/focus-sessions/', data),
   update: (id: number, data: Partial<FocusSession>) => http.patch<FocusSession>(`/api/focus-sessions/${id}/`, data),
   stats: () => http.get<{ total_seconds: number; by_list: Record<string, number>; by_tag: Record<string, number> }>('/api/focus-sessions/stats/'),
+  /** Démarrage piloté serveur (409 si une session tourne déjà). */
+  start: (data: { task?: number; planned_seconds?: number }) =>
+    http.post<FocusSession>('/api/focus-sessions/start/', data),
+  /** Session en cours (lancée par un créneau, un agent…), undefined sinon (204). */
+  current: () => http.get<FocusSession | undefined>('/api/focus-sessions/current/'),
 }
 
 export const countdownApi = {
@@ -257,4 +271,35 @@ export const webhooksApi = {
     http.patch<Webhook>(`/api/webhooks/${id}/`, data),
   remove: (id: number) => http.delete(`/api/webhooks/${id}/`),
   ping: (id: number) => http.post<{ detail: string }>(`/api/webhooks/${id}/ping/`, {}),
+}
+
+// ── Méthode d'organisation (modules 36 à 41) ────────────────────────────────
+
+export const methodApi = {
+  config: () => http.get<MethodConfig>('/api/method/config/'),
+  updateConfig: (patch: Partial<MethodConfig>) =>
+    http.patch<MethodConfig>('/api/method/config/', patch),
+  today: () => http.get<MethodToday>('/api/method/today/'),
+  setDay: (color: DayColor) =>
+    http.put<{ date: string; color: DayColor }>('/api/method/day/', { color }),
+  review: (week?: string) => http.get<WeeklyReview>(`/api/method/review/${qs({ week })}`),
+  completeReview: (data: { week?: string; level?: number; amnesty?: boolean; notes?: string }) =>
+    http.post<WeeklyReview>('/api/method/review/', data),
+}
+
+export const slotsApi = {
+  list: () => http.get<Slot[]>('/api/slots/'),
+  create: (data: Partial<Slot>) => http.post<Slot>('/api/slots/', data),
+  update: (id: number, data: Partial<Slot>) => http.patch<Slot>(`/api/slots/${id}/`, data),
+  remove: (id: number) => http.delete(`/api/slots/${id}/`),
+}
+
+export const occurrencesApi = {
+  list: (start?: string, end?: string) =>
+    http.get<SlotOccurrence[]>(`/api/slot-occurrences/${qs({ start, end })}`),
+  start: (id: number, data: { task?: number; minutes?: number } = {}) =>
+    http.post<SlotOccurrence>(`/api/slot-occurrences/${id}/start/`, data),
+  joker: (id: number) => http.post<SlotOccurrence>(`/api/slot-occurrences/${id}/joker/`, {}),
+  assign: (id: number, task: number | null) =>
+    http.patch<SlotOccurrence>(`/api/slot-occurrences/${id}/`, { task }),
 }

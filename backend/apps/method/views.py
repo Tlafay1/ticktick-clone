@@ -134,6 +134,7 @@ class MethodTodayView(APIView):
             "proposals_count": Task.objects.filter(
                 user=user, proposed=True, status=Task.Status.NORMAL, trashed_at__isnull=True,
             ).count(),
+            "review_pending": services.review_pending(user),
             "occurrences": SlotOccurrenceSerializer(occurrences, many=True).data,
         })
 

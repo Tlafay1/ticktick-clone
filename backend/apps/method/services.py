@@ -410,6 +410,19 @@ def default_review_week(user):
     return this_week - timedelta(days=7)
 
 
+def review_pending(user):
+    """La dernière revue arrivée attend d'être faite (jamais avant le premier créneau :
+    un nouvel utilisateur n'a pas de semaine à revoir)."""
+    week_start = default_review_week(user)
+    moment = review_moment(user, MethodConfig.for_user(user), week_start)
+    first_slot = Slot.objects.filter(user=user).order_by("created_at").first()
+    if first_slot is None or first_slot.created_at > moment or timezone.now() + REVIEW_UPCOMING < moment:
+        return False
+    return not WeeklyReview.objects.filter(
+        user=user, week_start=week_start, completed_at__isnull=False,
+    ).exists()
+
+
 def amnesty_candidates(user):
     return _open_tasks(Task.objects.filter(user=user)).filter(
         due_date__lt=timezone.now() - AMNESTY_AFTER,

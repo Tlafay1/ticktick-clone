@@ -40,6 +40,13 @@ const taskQuery = ref('')
 const taskResults = ref<Task[]>([])
 const showTaskPicker = ref(false)
 
+// Contrat de démarrage (créneau de la méthode) : 10 min suffisent, la suite est
+// proposée, jamais imposée.
+const CONTRACT_SECONDS = 600
+const CONTINUE_MINUTES = 15
+const contract = ref(false)
+const contractDone = ref(false)
+
 // Timer
 let ticker: ReturnType<typeof setInterval> | null = null
 
@@ -109,7 +116,39 @@ function durationLabel(s: number) {
   return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`
 }
 
-onMounted(loadStats)
+// Reprend une session démarrée ailleurs (créneau, agent, autre appareil) :
+// l'écran montre le vrai minuteur au lieu d'un compteur à zéro.
+async function adoptRunningSession() {
+  const session = await focusApi.current().catch(() => undefined)
+  if (!session || running.value) return
+  mode.value = 'pomodoro'
+  sessionType.value = 'work'
+  if (session.planned_seconds) workMinutes.value = Math.round(session.planned_seconds / 60)
+  contract.value = session.planned_seconds === CONTRACT_SECONDS
+  sessionStart.value = new Date(session.start_at)
+  elapsed.value = Math.floor((Date.now() - sessionStart.value.getTime()) / 1000)
+  currentSessionId.value = session.id
+  linkedTask.value = session.task ? await tasksApi.get(session.task).catch(() => null) : null
+  running.value = true
+  if (totalSeconds.value !== null && elapsed.value >= totalSeconds.value) {
+    finishTimer()
+    return
+  }
+  startTicker()
+}
+
+async function continueAfterContract() {
+  contractDone.value = false
+  contract.value = false
+  sessionType.value = 'work'
+  workMinutes.value = CONTINUE_MINUTES
+  await startTimer()
+}
+
+onMounted(() => {
+  loadStats()
+  adoptRunningSession()
+})
 
 onUnmounted(() => {
   if (ticker) clearInterval(ticker)
@@ -167,6 +206,14 @@ async function finishTimer() {
   }
 
   loadStats()
+
+  if (contract.value) {
+    // Contrat rempli : on propose de continuer, sans enchaîner sur une pause.
+    contract.value = false
+    contractDone.value = true
+    elapsed.value = 0
+    return
+  }
 
   // Avancer le Pomodoro
   if (mode.value === 'pomodoro' && sessionType.value === 'work') {
@@ -271,6 +318,14 @@ const sessionColor = computed(() => sessionType.value === 'work' ? 'var(--prio-h
           </div>
         </div>
 
+        <div v-if="contractDone" class="contract-done">
+          <p>Contrat rempli 🎉 Le plus dur était de commencer.</p>
+          <button class="btn btn-primary" @click="continueAfterContract">
+            Continuer {{ CONTINUE_MINUTES }} min
+          </button>
+          <button class="btn btn-ghost" @click="contractDone = false">J'arrête là</button>
+        </div>
+
         <!-- Contrôles -->
         <div class="controls">
           <button v-if="!running" class="ctrl-btn start" :style="`background: ${sessionColor}`" @click="startTimer">
@@ -364,6 +419,18 @@ const sessionColor = computed(() => sessionType.value === 'work' ? 'var(--prio-h
 </template>
 
 <style scoped>
+.contract-done {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+}
+.contract-done p { margin: 0; width: 100%; text-align: center; }
 .app-layout { display: flex; height: 100%; overflow: hidden; }
 
 .focus-main {

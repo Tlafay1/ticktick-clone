@@ -32,6 +32,9 @@ export const routes: RouteRecordRaw[] = [
   { path: '/focus',     name: 'focus',      component: () => import('@/views/FocusView.vue') },
   { path: '/stats',     name: 'stats',      component: () => import('@/views/StatsView.vue') },
   { path: '/countdown', name: 'countdown',  component: () => import('@/views/CountdownView.vue') },
+  // Méthode d'organisation (modules 36 à 41)
+  { path: '/review',    name: 'review',     component: () => import('@/views/ReviewView.vue') },
+  { path: '/proposals', name: 'proposals',  component: () => import('@/views/ProposalsView.vue') },
   { path: '/settings',  name: 'settings',   component: () => import('@/views/SettingsView.vue') },
   // Fenêtre « Saisie rapide » d'Electron (Ctrl+Maj+A global)
   { path: '/quick-add', name: 'quick-add',  component: () => import('@/views/QuickAddWindowView.vue') },
