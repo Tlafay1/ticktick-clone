@@ -155,6 +155,11 @@ jobs:
       - name: Tests E2E
         working-directory: web
         run: npx playwright test
+      # Le serveur lancé par « uv run » garde le verrou du cache uv : sans cet
+      # arrêt, le nettoyage de fin de setup-uv expire et fait échouer le job.
+      - name: Arrêter le backend
+        if: ${{ always() }}
+        run: pkill -f "manage.py runserver" || true
       - uses: actions/upload-artifact@v4
         if: ${{ failure() }}
         with:
