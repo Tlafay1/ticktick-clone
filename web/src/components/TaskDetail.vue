@@ -13,6 +13,9 @@ import ReminderEditor from './ReminderEditor.vue'
 import AttachmentsPanel from './AttachmentsPanel.vue'
 import VersionHistory from './VersionHistory.vue'
 import TemplateManager from './TemplateManager.vue'
+import { useRouter } from 'vue-router'
+import { startTenMinutes } from '@/composables/useStartTask'
+import { pushToast } from '@/composables/useToast'
 
 const taskStore = useTaskStore()
 const tagStore = useTagStore()
@@ -257,6 +260,14 @@ const dueSummary = computed(() => {
 function formatCommentDate(iso: string) {
   return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
+
+// « Juste commencer » (méthode) : visible ici sur toutes les plateformes — le
+// bouton des lignes n'apparaît qu'au survol, donc jamais sur téléphone.
+const router = useRouter()
+function startNow() {
+  if (!task.value) return
+  startTenMinutes(task.value.id, router).catch(() => pushToast('Impossible de démarrer', 'error'))
+}
 </script>
 
 <template>
@@ -276,6 +287,7 @@ function formatCommentDate(iso: string) {
         <Icon name="calendar" :size="14" /><span class="dp-tool-lbl">{{ dueSummary }}</span>
       </button>
       <div class="dp-top-actions">
+        <button v-if="task.status === 0" class="dp-start" title="Juste commencer : 10 minutes" @click="startNow">▶ 10 min</button>
         <button class="dp-tool" :class="{ active: popover === 'priority' }" title="Priorité" @click="togglePopover('priority')">
           <span :style="`color:${priorityColor(task.priority)}`"><Icon name="flag" :size="15" /></span>
         </button>
@@ -441,6 +453,17 @@ function formatCommentDate(iso: string) {
 </template>
 
 <style scoped>
+.dp-start {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dp-start:hover { background: var(--bg-hover); }
 .detail-panel {
   width: var(--detail-width);
   min-width: var(--detail-width);
