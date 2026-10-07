@@ -390,7 +390,9 @@ describe('Jalon 2 — organisation', () => {
       vi.useRealTimers()
       vi.unstubAllGlobals()
     }
-  })
+  // L'import dynamique du composable (graphe de modules transformé à froid) dépasse
+  // parfois les 5 s par défaut sur la CI ; le test lui-même dure quelques ms.
+  }, 20_000)
 
   it('M26 — options de snooze (5, 10, 15, 30 min, 1h, demain)', () => {
     const SNOOZE_OPTIONS = [5, 10, 15, 30, 60, 1440]
