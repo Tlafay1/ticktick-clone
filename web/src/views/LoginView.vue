@@ -42,6 +42,7 @@ async function submit() {
 <template>
   <div class="login">
     <form class="card" @submit.prevent="submit">
+      <img class="logo" src="/favicon.svg" alt="" width="56" height="56" />
       <h1>TickTick</h1>
       <p class="sub">{{ mode === 'login' ? 'Connexion' : 'Créer un compte' }}</p>
 
@@ -120,6 +121,9 @@ async function submit() {
 }
 @media (max-width: 480px) {
   .card { width: calc(100vw - 40px); padding: 24px 20px; }
+}
+.logo {
+  align-self: center;
 }
 h1 {
   margin: 0;
