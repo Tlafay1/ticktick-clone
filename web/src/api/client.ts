@@ -61,24 +61,37 @@ export class OfflineError extends Error {
   constructor() { super('hors-ligne — mutation mise en file') }
 }
 
-let refreshing: Promise<boolean> | null = null
+/**
+ * Issue d'un refresh : `invalid` = le serveur refuse le refresh token (seul cas
+ * qui déconnecte) ; `unavailable` = serveur injoignable ou en erreur (redéploiement,
+ * 502…) : on garde la session et on réessaiera plus tard.
+ */
+type RefreshOutcome = 'ok' | 'invalid' | 'unavailable'
 
-async function tryRefresh(): Promise<boolean> {
-  refreshing ??= (async () => {
+let refreshing: Promise<RefreshOutcome> | null = null
+
+async function tryRefresh(): Promise<RefreshOutcome> {
+  refreshing ??= (async (): Promise<RefreshOutcome> => {
     const refresh = tokens.refresh
-    if (!refresh) return false
-    const res = await fetch(apiUrl('/api/auth/token/refresh/'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh }),
-    })
-    if (!res.ok) {
-      tokens.clear()
-      return false
+    if (!refresh) return 'invalid'
+    let res: Response
+    try {
+      res = await fetch(apiUrl('/api/auth/token/refresh/'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh }),
+      })
+    } catch {
+      return 'unavailable'
     }
+    if (res.status === 400 || res.status === 401) {
+      tokens.clear()
+      return 'invalid'
+    }
+    if (!res.ok) return 'unavailable'
     const data = await res.json()
     tokens.set(data.access, data.refresh)
-    return true
+    return 'ok'
   })().finally(() => (refreshing = null))
   return refreshing
 }
@@ -110,8 +123,9 @@ export async function request<T>(
   }
 
   if (res.status === 401 && retry && tokens.refresh) {
-    if (await tryRefresh()) return request(method, url, body, false)
-    window.location.href = '/login'
+    const outcome = await tryRefresh()
+    if (outcome === 'ok') return request(method, url, body, false)
+    if (outcome === 'invalid') window.location.href = '/login'
   }
   if (!res.ok) {
     const data = await res.json().catch(() => null)

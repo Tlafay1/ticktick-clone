@@ -21,10 +21,19 @@ const MIME = {
   '.woff2': 'font/woff2',
 }
 
-/** Démarre le serveur sur un port libre du loopback ; résout l'URL de base. */
-function startWebServer(distDir) {
+// Port FIXE : l'origine (http://127.0.0.1:<port>) délimite le localStorage où
+// vivent la session et l'URL du serveur. Un port aléatoire changeait d'origine à
+// chaque lancement — donc déconnexion à chaque démarrage de Windows.
+const DEFAULT_PORT = 47821
+
+/**
+ * Démarre le serveur sur le loopback ; résout l'URL de base. Port fixe, sauf
+ * s'il est pris par un autre programme : repli sur un port libre (l'app
+ * démarre, au prix d'une reconnexion).
+ */
+function startWebServer(distDir, port = DEFAULT_PORT) {
   const root = path.resolve(distDir)
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname)
       let filePath = path.normalize(path.join(root, urlPath))
@@ -35,8 +44,18 @@ function startWebServer(distDir) {
       res.setHeader('Content-Type', MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream')
       fs.createReadStream(filePath).pipe(res)
     })
-    server.listen(0, '127.0.0.1', () => resolve(`http://127.0.0.1:${server.address().port}`))
+    const listen = (p) => server.listen(p, '127.0.0.1')
+    server.on('listening', () => resolve(`http://127.0.0.1:${server.address().port}`))
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE' && port !== 0) {
+        port = 0
+        listen(0)
+      } else {
+        reject(err)
+      }
+    })
+    listen(port)
   })
 }
 
-module.exports = { startWebServer }
+module.exports = { startWebServer, DEFAULT_PORT }

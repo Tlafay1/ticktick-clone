@@ -67,6 +67,28 @@ describe('client HTTP', () => {
     expect(refreshCalls).toBe(1)
   })
 
+  it('garde la session si le serveur est indisponible pendant le refresh (redéploiement)', async () => {
+    tokens.set('old', 'ref')
+    const seq = [jsonResponse(401, {}), jsonResponse(502, null)]
+    let i = 0
+    vi.stubGlobal('fetch', vi.fn(async () => seq[i++]))
+
+    await expect(http.get('/api/tasks/')).rejects.toBeInstanceOf(ApiError)
+    expect(tokens.refresh).toBe('ref')
+  })
+
+  it('garde la session si le réseau tombe pendant le refresh', async () => {
+    tokens.set('old', 'ref')
+    let i = 0
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (i++ === 0) return jsonResponse(401, {})
+      throw new TypeError('Failed to fetch')
+    }))
+
+    await expect(http.get('/api/tasks/')).rejects.toBeInstanceOf(ApiError)
+    expect(tokens.refresh).toBe('ref')
+  })
+
   it('vide les tokens quand le refresh échoue', async () => {
     tokens.set('old', 'ref')
     const seq = [jsonResponse(401, {}), jsonResponse(401, { detail: 'refresh mort' })]
