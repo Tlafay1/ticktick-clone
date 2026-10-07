@@ -66,6 +66,13 @@ def test_parse_ics_ignores_events_outside_window():
     assert not any(o["uid"] == "simple-1" for o in occ)
 
 
+@pytest.fixture(autouse=True)
+def _fige_maintenant(monkeypatch):
+    # La fenêtre d'import glisse avec « maintenant » : sans ce gel, la fixture de
+    # juillet 2026 finit hors fenêtre et les tests cassent avec le calendrier.
+    monkeypatch.setattr("django.utils.timezone.now", lambda: NOW)
+
+
 class _FakeResp:
     status_code = 200
     content = ICS_SAMPLE.encode()

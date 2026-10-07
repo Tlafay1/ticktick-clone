@@ -6,6 +6,8 @@ Modules PRD : 4 (calendrier & scheduling), 5 (kanban & timeline), 13 (Eisenhower
 La manipulation directe (drag-to-schedule, resize, DnD) est vérifiée par la
 checklist manuelle ; ici on couvre les contrats backend/données.
 """
+from datetime import date, timedelta
+
 import pytest
 
 pytestmark = pytest.mark.spec
@@ -135,10 +137,12 @@ class TestM16Duration:
 
 class TestM04IcsSubscription:
 
+    # Date relative : une date figée finit hors de la fenêtre glissante d'import.
+    _JOUR = (date.today() + timedelta(days=10)).strftime("%Y%m%d")
     ICS = (
         "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//spec//FR\n"
         "BEGIN:VEVENT\nUID:ev-1\nSUMMARY:Conf\n"
-        "DTSTART:20260720T090000Z\nDTEND:20260720T100000Z\nEND:VEVENT\n"
+        f"DTSTART:{_JOUR}T090000Z\nDTEND:{_JOUR}T100000Z\nEND:VEVENT\n"
         "END:VCALENDAR\n"
     )
 
