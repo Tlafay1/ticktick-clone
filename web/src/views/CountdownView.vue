@@ -231,4 +231,10 @@ const sorted = computed(() => [
 .empty-countdown { grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--text-muted); }
 .empty-icon { font-size: 40px; margin-bottom: 12px; }
 .loading-msg { text-align: center; padding: 60px; color: var(--text-muted); }
+
+/* Téléphone : dégager le titre du bouton ☰ du tiroir, fixé en haut à gauche. */
+@media (max-width: 768px) {
+  .countdown-main { padding: 64px 16px 24px; }
+  .countdown-header { flex-wrap: wrap; gap: 12px; }
+}
 </style>

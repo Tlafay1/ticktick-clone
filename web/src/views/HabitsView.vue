@@ -606,4 +606,12 @@ function isDoneOnDay(habit: Habit, date: string) {
 .cal-day-num { font-size: 12px; font-weight: 500; color: var(--text-muted); display: block; margin-bottom: 3px; }
 .cal-dots { display: flex; flex-wrap: wrap; gap: 2px; }
 .cal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Téléphone : le bouton ☰ du tiroir est fixé en haut à gauche, et l'en-tête
+   (onglets + 2 boutons) ne tenait pas sur une ligne. */
+@media (max-width: 768px) {
+  .habits-main { padding: 64px 16px 24px; }
+  .habits-header { flex-wrap: wrap; gap: 12px; }
+  .header-actions { flex-wrap: wrap; }
+}
 </style>

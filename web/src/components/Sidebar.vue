@@ -385,9 +385,10 @@ function cycleTheme() {
             @contextmenu.prevent="showProjectMenu($event, p)"
             @dragstart="onProjectDragStart($event, p)"
           >
-            <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+            <span v-if="p.objective === 'active' && !p.icon" class="nav-icon objective-icon" :style="p.color ? `color:${p.color}` : ''" title="Objectif actif"><Icon name="target" :size="15" /></span>
+            <span v-else-if="!p.icon" class="nav-dot" :class="{ fridge: p.objective === 'fridge' }" :style="p.color ? `background:${p.color}` : ''" :title="p.objective === 'fridge' ? 'Au frigo' : undefined" />
             <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
-            <span class="nav-label">{{ p.objective === 'active' ? '🎯 ' : p.objective === 'fridge' ? '🧊 ' : '' }}{{ p.name }}</span>
+            <span class="nav-label">{{ p.name }}</span>
             <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
             <span v-if="p.objective === 'active' && p.tasks_total" class="objective-bar" :title="`${p.tasks_done}/${p.tasks_total} terminées`">
               <span :style="{ width: `${(100 * p.tasks_done) / p.tasks_total}%` }" />
@@ -432,9 +433,10 @@ function cycleTheme() {
         @drop="listDrop(idx)"
         @dragend="listDragEnd"
       >
-        <span v-if="!p.icon" class="nav-dot" :style="p.color ? `background:${p.color}` : ''" />
+        <span v-if="p.objective === 'active' && !p.icon" class="nav-icon objective-icon" :style="p.color ? `color:${p.color}` : ''" title="Objectif actif"><Icon name="target" :size="15" /></span>
+        <span v-else-if="!p.icon" class="nav-dot" :class="{ fridge: p.objective === 'fridge' }" :style="p.color ? `background:${p.color}` : ''" :title="p.objective === 'fridge' ? 'Au frigo' : undefined" />
         <span v-if="p.icon" class="nav-icon project-icon">{{ p.icon }}</span>
-        <span class="nav-label">{{ p.objective === 'active' ? '🎯 ' : p.objective === 'fridge' ? '🧊 ' : '' }}{{ p.name }}</span>
+        <span class="nav-label">{{ p.name }}</span>
         <span v-if="projectCounts[p.id]" class="nav-count">{{ projectCounts[p.id] }}</span>
         <span v-if="p.objective === 'active' && p.tasks_total" class="objective-bar" :title="`${p.tasks_done}/${p.tasks_total} terminées`">
           <span :style="{ width: `${(100 * p.tasks_done) / p.tasks_total}%` }" />
@@ -588,6 +590,9 @@ function cycleTheme() {
   border-radius: 1px; background: var(--border); overflow: hidden;
 }
 .objective-bar > span { display: block; height: 100%; background: var(--primary); }
+.objective-icon { color: var(--primary); }
+/* Au frigo : pastille éteinte. */
+.nav-dot.fridge { opacity: 0.35; }
 .sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);

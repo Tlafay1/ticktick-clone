@@ -377,7 +377,8 @@ async function onGridMouseUp() {
 }
 
 // ── Panneau "Organiser les tâches" ───────────────────────────────────────────
-const showOrganizer = ref(true)
+// Fermé d'emblée sur téléphone : ouvert, il écrasait la grille du calendrier.
+const showOrganizer = ref(typeof window === 'undefined' || window.innerWidth > 768)
 const organizerTab = ref<'list' | 'tag' | 'priority'>('list')
 const organizerListId = ref<number | null>(null)
 const organizerTagId = ref<number | null>(null)

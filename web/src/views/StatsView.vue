@@ -239,6 +239,9 @@ const bestHour = computed(() => {
 /* Heatmap */
 .heatmap {
   display: grid;
+  /* 53 semaines × 10 px minimum : sur téléphone, la grille défile dans sa carte
+     au lieu d'être rognée. */
+  overflow-x: auto;
   grid-template-columns: repeat(53, 1fr);
   grid-template-rows: repeat(7, 1fr);
   grid-auto-flow: column;
@@ -246,6 +249,8 @@ const bestHour = computed(() => {
 }
 .heat-cell { width: 100%; aspect-ratio: 1; border-radius: 2px; min-width: 10px; }
 .heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+/* Hors de la grille, width: 100% étirait chaque case de légende sur toute la ligne. */
+.heatmap-legend .heat-cell { width: 10px; flex: none; }
 
 /* Mensuel */
 .monthly-chart { display: flex; align-items: flex-end; gap: 4px; height: 140px; }
@@ -278,4 +283,9 @@ const bestHour = computed(() => {
 }
 .heat-pop-date { font-weight: 600; color: var(--text); }
 .heat-pop-count { color: var(--text-muted); margin-top: 2px; }
+
+/* Téléphone : dégager le titre du bouton ☰ du tiroir, fixé en haut à gauche. */
+@media (max-width: 768px) {
+  .stats-main { padding: 64px 16px 24px; }
+}
 </style>

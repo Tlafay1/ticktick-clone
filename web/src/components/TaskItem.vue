@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import type { Blocker, Task } from '@/types'
 import { dueLabel, dueTone } from '@/lib/dates'
 import { BLOCKERS } from '@/lib/method'
@@ -51,8 +51,11 @@ const childCounts = computed(() => {
 const dueTone_ = computed(() => dueTone(props.task.due_date, props.task.is_all_day, props.task.status))
 const dueLabel_ = computed(() => dueLabel(props.task.due_date, props.task.is_all_day))
 
+const route = useRoute()
 const projectName = computed(() => {
   if (!props.task.project) return ''
+  // Dans la vue de la liste elle-même, son nom sur chaque ligne n'apporte rien.
+  if (route?.name === 'project' && Number(route.params.id) === props.task.project) return ''
   return projectStore.projects.find(p => p.id === props.task.project)?.name ?? ''
 })
 
