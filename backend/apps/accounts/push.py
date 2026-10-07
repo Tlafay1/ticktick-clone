@@ -8,9 +8,10 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-def notify_user(user, title, body, url="/"):
+def notify_user(user, title, body, url="/", tag=""):
     """Envoie une notification push à tous les appareils abonnés de `user`.
 
+    `tag` : deux notifications de même tag se remplacent au lieu de s'empiler.
     Sans clés VAPID configurées, l'appel est ignoré silencieusement
     (la fonctionnalité reste optionnelle / désactivable).
     """
@@ -20,7 +21,7 @@ def notify_user(user, title, body, url="/"):
 
     from pywebpush import WebPushException, webpush
 
-    payload = json.dumps({"title": title, "body": body, "url": url})
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
     sent = 0
     for sub in user.push_subscriptions.all():
         try:
@@ -34,7 +35,11 @@ def notify_user(user, title, body, url="/"):
                 vapid_claims={"sub": f"mailto:{settings.VAPID_ADMIN_EMAIL}"},
             )
             sent += 1
-        except WebPushException as exc:
+        except Exception as exc:
+            if not isinstance(exc, WebPushException):
+                # Réseau, abonnement corrompu… : on passe à l'appareil suivant.
+                logger.warning("Échec Web Push (%s) : %s", sub.endpoint[:32], exc)
+                continue
             # 404/410 : abonnement expiré → on le purge.
             if exc.response is not None and exc.response.status_code in (404, 410):
                 sub.delete()

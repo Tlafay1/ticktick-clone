@@ -32,6 +32,26 @@ export const capacitorPlatform: Platform = {
     await LocalNotifications.cancel({ notifications: [{ id }] })
   },
 
+  async syncScheduledNotifications(items: NotificationOptions[]) {
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    const { notifications: pending } = await LocalNotifications.getPending()
+    if (pending.length) {
+      await LocalNotifications.cancel({ notifications: pending.map(n => ({ id: n.id })) })
+    }
+    if (!items.length) return
+    await LocalNotifications.schedule({
+      notifications: items.map(o => ({
+        id: o.id,
+        title: o.title,
+        body: o.body,
+        // allowWhileIdle : sinon le mode Doze retarde le rappel de plusieurs minutes.
+        schedule: o.at ? { at: o.at, allowWhileIdle: true } : undefined,
+        ongoing: o.persistent,
+        extra: { url: o.url ?? '/' },
+      })),
+    })
+  },
+
   store: {
     async get(key: string) {
       const { Preferences } = await import('@capacitor/preferences')

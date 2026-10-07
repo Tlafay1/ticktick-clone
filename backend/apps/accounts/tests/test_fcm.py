@@ -78,3 +78,19 @@ def test_send_fcm_purges_unregistered_token(settings, user, monkeypatch):
 
     assert fcm.send_fcm(user, "T", "B") == 0
     assert FCMDevice.objects.filter(user=user).count() == 0
+
+
+def test_reminders_skip_devices_scheduling_locally(api, settings, user, monkeypatch):
+    """L'app Android programme ses rappels en local : FCM ne les double pas."""
+    from apps.accounts import fcm
+
+    api.post("/api/push/fcm-token/", {"token": "ancien"}, format="json")
+    api.post("/api/push/fcm-token/", {"token": "recent", "local_reminders": True}, format="json")
+    monkeypatch.setattr(fcm, "_credentials", lambda: (_FakeCreds(), "proj-1"))
+    calls = []
+    monkeypatch.setattr("requests.post", lambda url, **kw: calls.append(kw) or _FakeResp(200))
+
+    assert fcm.send_fcm(user, "T", "B", reminder=True) == 1
+    assert calls[0]["json"]["message"]["token"] == "ancien"
+    # Hors rappel (événement serveur), tous les appareils reçoivent.
+    assert fcm.send_fcm(user, "T", "B") == 2

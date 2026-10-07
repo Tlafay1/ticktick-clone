@@ -1,94 +1,135 @@
 import { onUnmounted } from 'vue'
-import { tasksApi } from '@/api'
+import { useRouter } from 'vue-router'
+import { habitsApi, tasksApi } from '@/api'
 import { http } from '@/api/client'
 import { electronAPI } from '@/lib/electron'
-import type { User } from '@/types'
+import { plannedHabitReminders, plannedTaskReminders, type PlannedNotification } from '@/lib/reminders'
+import type { Task, User } from '@/types'
 
-// Vérifie les rappels dus toutes les 60 secondes et déclenche des notifications navigateur.
-// Garde une trace des rappels déjà notifiés pour éviter les doublons.
+// Rappels côté client, toutes les 60 secondes :
+// - web / Electron : notifications en page pour les rappels dus maintenant ;
+// - Android : programmation locale des 7 prochains jours (l'OS les déclenche
+//   même app fermée, sans dépendre de Firebase).
 
-const notified = new Set<number>()
+const NOTIFIED_KEY = 'tt.notified'
+const NATIVE_HORIZON_DAYS = 7
+// Plafond de notifications programmées : AlarmManager limite le nombre d'alarmes par app.
+const NATIVE_MAX = 60
+
+/** Tags déjà notifiés (persistés : un rechargement ne renotifie pas). */
+function loadNotified(): Record<string, number> {
+  try {
+    const all: Record<string, number> = JSON.parse(localStorage.getItem(NOTIFIED_KEY) ?? '{}')
+    const limit = Date.now() - 2 * 86_400_000
+    for (const [tag, at] of Object.entries(all)) if (at < limit) delete all[tag]
+    return all
+  } catch {
+    return {}
+  }
+}
+
+function markNotified(tag: string) {
+  const all = loadNotified()
+  all[tag] = Date.now()
+  try { localStorage.setItem(NOTIFIED_KEY, JSON.stringify(all)) } catch { /* stockage plein */ }
+}
+
+const isNative = () => typeof window !== 'undefined' && 'Capacitor' in window
+// Écouteurs natifs posés une seule fois par session (la vue se remonte souvent).
+let nativeListenersReady = false
 
 export function useReminderNotifications() {
+  const router = useRouter()
   let timer: ReturnType<typeof setInterval> | null = null
+  let stopped = false
+  let lastNativeSignature = ''
+  // Alertes persistantes en cours, par tag : stoppées au clic, à la fermeture
+  // ou quand la tâche n'est plus ouverte.
+  const repeats = new Map<string, ReturnType<typeof setInterval>>()
 
-  async function requestPermission() {
-    if (typeof Notification === 'undefined') return false
-    if (Notification.permission === 'granted') return true
-    if (Notification.permission === 'denied') return false
-    const res = await Notification.requestPermission()
-    return res === 'granted'
+  function stopRepeat(tag: string) {
+    const r = repeats.get(tag)
+    if (r) { clearInterval(r); repeats.delete(tag) }
+  }
+
+  function showInPage(n: PlannedNotification) {
+    const opts = {
+      body: n.body,
+      tag: n.tag,
+      requireInteraction: n.annoying,
+    }
+    const notif = new Notification(n.title, opts)
+    notif.onclick = () => { stopRepeat(n.tag); window.focus(); router.push(n.url) }
+    if (!n.annoying) return
+    // Annoying Alert : relance toutes les 30 s (même tag : remplace au lieu
+    // d'empiler) jusqu'à interaction, 10 fois au plus.
+    let count = 0
+    repeats.set(n.tag, setInterval(() => {
+      if (count++ >= 10) { stopRepeat(n.tag); return }
+      const again = new Notification(n.title, {
+        ...opts,
+        body: 'Rappel persistant – cliquez pour arrêter',
+        renotify: true,
+      } as NotificationOptions)
+      again.onclick = notif.onclick
+      again.onclose = () => stopRepeat(n.tag)
+    }, 30_000))
+    notif.onclose = () => stopRepeat(n.tag)
+  }
+
+  async function checkInPage(tasks: Task[]) {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    const now = Date.now()
+    // Dû dans la minute qui vient, ou en retard de moins de 5 min.
+    const due = plannedTaskReminders(tasks, new Date(now - 300_000), new Date(now + 60_000))
+    const live = new Set(due.map(n => n.tag))
+    for (const tag of [...repeats.keys()]) if (!live.has(tag)) stopRepeat(tag)
+
+    const notified = loadNotified()
+    for (const n of due) {
+      if (notified[n.tag]) continue
+      markNotified(n.tag)
+      // Sous Electron : notification native du main (actions Terminer /
+      // Snooze 10 min gérées côté desktop, id = tâche à terminer).
+      const eapi = electronAPI()
+      if (eapi) {
+        eapi.notify({ id: n.taskId ?? n.id, title: n.title, body: n.body, persistent: n.annoying })
+        continue
+      }
+      showInPage(n)
+    }
+  }
+
+  async function syncNative(tasks: Task[]) {
+    const now = new Date()
+    let habits: Awaited<ReturnType<typeof habitsApi.list>> = []
+    try { habits = await habitsApi.list() } catch { /* hors ligne : rappels de tâches seuls */ }
+    const horizon = new Date(now.getTime() + NATIVE_HORIZON_DAYS * 86_400_000)
+    const planned = [
+      ...plannedTaskReminders(tasks, now, horizon),
+      ...plannedHabitReminders(habits, now, NATIVE_HORIZON_DAYS),
+    ].sort((a, b) => a.at.getTime() - b.at.getTime()).slice(0, NATIVE_MAX)
+
+    // Reprogrammer seulement si le plan a changé (évite de tout annuler chaque minute).
+    const signature = JSON.stringify(planned.map(n => [n.id, n.at.getTime(), n.title]))
+    if (signature === lastNativeSignature) return
+    const { capacitorPlatform } = await import('@/platform/capacitor')
+    await capacitorPlatform.syncScheduledNotifications?.(planned.map(n => ({
+      id: n.id, title: n.title, body: n.body, at: n.at, persistent: n.annoying, url: n.url,
+    })))
+    lastNativeSignature = signature
   }
 
   async function check() {
-    if (typeof Notification === 'undefined') return
-    if (Notification.permission !== 'granted') return
-
-    const now = new Date()
-    // Récupère les tâches avec rappel dû dans la prochaine minute
-    let tasks: Awaited<ReturnType<typeof tasksApi.list>>
+    let tasks: Task[]
     try {
       tasks = await tasksApi.list({ status: 0 })
     } catch {
       return
     }
-
-    for (const task of tasks) {
-      // Les rappels sont imbriqués dans la réponse /api/tasks/ (TaskSerializer) :
-      // plus d'aller-retour par tâche (l'ancien N+1 coûtait un GET/tâche/minute).
-      const reminders = task.reminders ?? []
-      for (const r of reminders) {
-        if (notified.has(r.id)) continue
-
-        let triggerAt: Date | null = null
-        if (r.trigger_type === 'absolute' && r.trigger_at) {
-          triggerAt = new Date(r.trigger_at)
-        } else if (r.trigger_type === 'relative' && task.due_date && r.minutes_before != null) {
-          triggerAt = new Date(new Date(task.due_date).getTime() - r.minutes_before * 60_000)
-        }
-
-        if (!triggerAt) continue
-        const diff = triggerAt.getTime() - now.getTime()
-        // Notifie si le rappel est dû dans les 60 prochaines secondes ou en retard de moins de 5 min
-        if (diff <= 60_000 && diff >= -300_000) {
-          notified.add(r.id)
-          // Sous Electron : notification native du main (actions Terminer /
-          // Snooze 10 min gérées côté desktop, id = tâche à terminer).
-          const eapi = electronAPI()
-          if (eapi) {
-            eapi.notify({
-              id: task.id,
-              title: `⏰ ${task.title}`,
-              body: r.minutes_before
-                ? `Rappel ${r.minutes_before > 0 ? r.minutes_before + ' min avant' : 'maintenant'}`
-                : 'Rappel',
-              persistent: r.annoying,
-            })
-            continue
-          }
-          const n = new Notification(`⏰ ${task.title}`, {
-            body: r.minutes_before
-              ? `Rappel ${r.minutes_before > 0 ? r.minutes_before + ' min avant' : 'maintenant'}`
-              : 'Rappel',
-            tag: `reminder-${r.id}`,
-            requireInteraction: r.annoying,
-          })
-          if (r.annoying) {
-            // Annoying Alert : relance la notification toutes les 30 s jusqu'à interaction
-            let count = 0
-            const repeat = setInterval(() => {
-              if (count++ > 10) { clearInterval(repeat); return }
-              new Notification(`⏰ ${task.title}`, {
-                body: 'Rappel persistant – cliquez pour arrêter',
-                tag: `reminder-${r.id}-repeat-${count}`,
-                requireInteraction: true,
-              })
-            }, 30_000)
-            n.onclick = () => clearInterval(repeat)
-          }
-        }
-      }
-    }
+    if (stopped) return
+    if (isNative()) await syncNative(tasks).catch(() => {})
+    else await checkInPage(tasks)
   }
 
   async function checkDailyReview() {
@@ -115,16 +156,56 @@ export function useReminderNotifications() {
     }
   }
 
+  // Retour au premier plan (Android) : resynchronise tout de suite.
+  function onVisible() {
+    if (document.visibilityState === 'visible') check()
+  }
+
+  async function startNative() {
+    const { capacitorPlatform } = await import('@/platform/capacitor')
+    if (!(await capacitorPlatform.requestNotificationPermission())) return
+    document.addEventListener('visibilitychange', onVisible)
+    if (nativeListenersReady) return
+    nativeListenersReady = true
+    const { LocalNotifications } = await import('@capacitor/local-notifications')
+    await LocalNotifications.addListener('localNotificationActionPerformed', ({ notification }) => {
+      const url = (notification.extra as { url?: string } | undefined)?.url
+      if (url) router.push(url)
+    })
+    // FCM après connexion (le jeton exige d'être authentifié) : sert aux
+    // événements serveur, pas aux rappels programmés localement.
+    import('@/lib/push').then(m => m.registerPush()).catch(() => {})
+  }
+
   async function start() {
-    const ok = await requestPermission()
-    if (!ok) return
+    if (isNative()) {
+      await startNative().catch(() => {})
+    } else if (!(await requestPermission())) {
+      return
+    }
+    if (stopped) return
     await check()
-    await checkDailyReview()
-    timer = setInterval(async () => { await check(); await checkDailyReview() }, 60_000)
+    if (!isNative()) await checkDailyReview()
+    if (stopped) return  // démonté pendant les await : ne pas fuiter l'intervalle
+    timer = setInterval(async () => {
+      await check()
+      if (!isNative()) await checkDailyReview()
+    }, 60_000)
+  }
+
+  async function requestPermission() {
+    if (typeof Notification === 'undefined') return false
+    if (Notification.permission === 'granted') return true
+    if (Notification.permission === 'denied') return false
+    const res = await Notification.requestPermission()
+    return res === 'granted'
   }
 
   function stop() {
+    stopped = true
     if (timer) clearInterval(timer)
+    for (const tag of [...repeats.keys()]) stopRepeat(tag)
+    if (isNative()) document.removeEventListener('visibilitychange', onVisible)
   }
 
   onUnmounted(stop)

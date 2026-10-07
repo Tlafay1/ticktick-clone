@@ -26,11 +26,12 @@ def _credentials():
     return creds, info["project_id"]
 
 
-def send_fcm(user, title, body, url="/"):
+def send_fcm(user, title, body, url="/", reminder=False):
     """Envoie une notification à tous les appareils FCM de `user`.
 
-    Retourne le nombre d'envois réussis. Purge les jetons expirés (404
-    UNREGISTERED). No-op si les credentials ne sont pas configurés.
+    `reminder` : rappel programmé, ignoré par les appareils qui le programment
+    déjà en local. Retourne le nombre d'envois réussis. Purge les jetons
+    expirés (404 UNREGISTERED). No-op si les credentials ne sont pas configurés.
     """
     creds, project_id = _credentials()
     if creds is None:
@@ -46,8 +47,11 @@ def send_fcm(user, title, body, url="/"):
         "Authorization": f"Bearer {creds.token}",
         "Content-Type": "application/json",
     }
+    devices = user.fcm_devices.all()
+    if reminder:
+        devices = devices.filter(local_reminders=False)
     sent = 0
-    for device in user.fcm_devices.all():
+    for device in devices:
         payload = {
             "message": {
                 "token": device.token,

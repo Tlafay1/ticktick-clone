@@ -6,6 +6,7 @@ export interface NotificationOptions {
   body: string
   at?: Date          // programmation locale
   persistent?: boolean
+  url?: string       // route ouverte au tap
 }
 
 export interface Platform {
@@ -15,6 +16,11 @@ export interface Platform {
   scheduleNotification(opts: NotificationOptions): Promise<void>
   /** Annule une notification par son id. */
   cancelNotification(id: number): Promise<void>
+  /**
+   * Remplace toutes les notifications programmées par `items` (Android :
+   * l'OS les déclenche même app fermée). Absent là où rien ne se programme.
+   */
+  syncScheduledNotifications?(items: NotificationOptions[]): Promise<void>
   /** Stockage clé/valeur persistant. */
   store: {
     get(key: string): Promise<string | null>

@@ -158,7 +158,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "TickTick Clone API",
     "DESCRIPTION": "API REST ouverte du clone TickTick self-hosted.",
-    "VERSION": "0.2.0",
+    "VERSION": "0.2.1",
     "SERVE_INCLUDE_SCHEMA": False,
 }
 

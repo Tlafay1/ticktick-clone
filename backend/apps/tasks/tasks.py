@@ -1,5 +1,6 @@
 """Tâches Celery : déclenchement des rappels et entretien de la corbeille."""
 
+import logging
 from datetime import timedelta
 
 from celery import shared_task
@@ -10,34 +11,58 @@ from apps.accounts.push import notify_user
 
 from .models import TRASH_RETENTION_DAYS, Reminder, Task
 
+logger = logging.getLogger(__name__)
+
+# Au-delà de ce retard, un rappel n'en est plus un : il est marqué envoyé sans
+# notifier (évite une rafale de vieux rappels après une panne du worker).
+STALE_AFTER = timedelta(hours=2)
+
+
+def reminder_tag(reminder, due):
+    """Identifiant partagé par tous les canaux : le navigateur remplace au lieu d'empiler."""
+    return f"reminder-{reminder.id}-{int(due.timestamp())}"
+
 
 @shared_task
 def dispatch_due_reminders():
-    """Envoie les rappels arrivés à échéance et non encore dispatchés.
+    """Envoie les rappels arrivés à échéance (Web Push + FCM).
 
-    Idempotent grâce à `Reminder.dispatched_at`. Ignore les rappels de tâches
-    terminées, abandonnées ou en corbeille.
+    Un rappel est dû une fois par échéance : s'il a été envoyé AVANT son instant
+    de déclenchement actuel (récurrence avancée, tâche reportée), il est réarmé.
+    Les appareils Android récents programment leurs rappels en local : FCM les
+    saute (cf. FCMDevice.local_reminders).
     """
     now = timezone.now()
-    pending = Reminder.objects.filter(dispatched_at__isnull=True).select_related("task")
+    pending = Reminder.objects.filter(
+        task__status=Task.Status.NORMAL, task__trashed_at__isnull=True
+    ).select_related("task", "task__user")
     sent = 0
     for reminder in pending:
-        task = reminder.task
-        if task.status != Task.Status.NORMAL or task.trashed_at is not None:
-            continue
         due = reminder.due_at()
         if due is None or due > now:
             continue
-        for _push in (notify_user, send_fcm):
-            _push(
-                task.user,
-                title=task.title,
-                body="Rappel : cette tâche arrive à échéance.",
-                url=f"/task/{task.id}",
-            )
+        if reminder.dispatched_at is not None and reminder.dispatched_at >= due:
+            continue
+        if now - due <= STALE_AFTER:
+            task = reminder.task
+            payload = {
+                "title": task.title,
+                "body": "Rappel : cette tâche arrive à échéance.",
+                "url": f"/task/{task.id}",
+            }
+            for push, extra in (
+                (notify_user, {"tag": reminder_tag(reminder, due)}),
+                (send_fcm, {"reminder": True}),
+            ):
+                try:
+                    push(task.user, **payload, **extra)
+                except Exception:
+                    # Un canal en échec ne doit ni bloquer les autres ni faire
+                    # renvoyer ce rappel chaque minute (la boucle d'avant).
+                    logger.exception("Échec d'envoi du rappel %s", reminder.id)
+            sent += 1
         reminder.dispatched_at = now
         reminder.save(update_fields=["dispatched_at"])
-        sent += 1
     return sent
 
 

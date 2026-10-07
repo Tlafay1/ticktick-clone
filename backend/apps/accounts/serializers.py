@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
@@ -28,6 +30,14 @@ class UserSettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserSettings
         exclude = ["id", "user"]
+
+    def validate_timezone(self, value):
+        if value:
+            try:
+                ZoneInfo(value)
+            except (ZoneInfoNotFoundError, ValueError):
+                raise serializers.ValidationError("Fuseau horaire inconnu.") from None
+        return value
 
 
 class UserSerializer(serializers.ModelSerializer):

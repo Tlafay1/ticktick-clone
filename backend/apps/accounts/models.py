@@ -1,5 +1,7 @@
 import secrets
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from django.conf import settings as django_settings
 from django.contrib.auth.models import AbstractUser, UserManager
 from django.db import models
 
@@ -76,9 +78,19 @@ class UserSettings(models.Model):
     # Daily review (M26) : heure HH:MM de la notification du matin/soir, null = désactivé
     daily_review_morning = models.TimeField(null=True, blank=True)
     daily_review_evening = models.TimeField(null=True, blank=True)
+    # Fuseau IANA de l'utilisateur (renseigné par le client) : les heures « murales »
+    # (rappels d'habitude, créneaux) s'y interprètent, pas en UTC serveur.
+    timezone = models.CharField(max_length=64, blank=True)
 
     def __str__(self):
         return f"Settings<{self.user}>"
+
+    @property
+    def tzinfo(self):
+        try:
+            return ZoneInfo(self.timezone or django_settings.TIME_ZONE)
+        except (ZoneInfoNotFoundError, ValueError):
+            return ZoneInfo(django_settings.TIME_ZONE)
 
 
 def generate_api_key():
@@ -126,6 +138,9 @@ class FCMDevice(models.Model):
         User, on_delete=models.CASCADE, related_name="fcm_devices"
     )
     token = models.CharField(max_length=255, unique=True)
+    # L'app programme elle-même ses rappels (notifications locales) : le serveur
+    # ne les lui pousse pas en double.
+    local_reminders = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

@@ -42,6 +42,12 @@ export const useUserStore = defineStore('user', () => {
       themePreset.value = user.value.settings?.theme_preset ?? ''
       applyTheme(theme.value)
       applyPreset(themePreset.value)
+      // Le serveur interprète les heures « murales » (rappels d'habitude,
+      // créneaux) dans ce fuseau : on le tient à jour depuis l'appareil.
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+      if (tz && user.value.settings && user.value.settings.timezone !== tz) {
+        updateSettings({ timezone: tz }).catch(() => {})
+      }
     } catch {
       // non connecté
     }

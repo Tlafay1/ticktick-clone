@@ -19,6 +19,8 @@ self.addEventListener('push', (event) => {
       body: data.body || '',
       icon: '/favicon.svg',
       badge: '/favicon.svg',
+      // Même tag que la notification en page : elles se remplacent au lieu de s'empiler.
+      tag: data.tag || undefined,
       data: { url: data.url || '/' },
     }),
   )

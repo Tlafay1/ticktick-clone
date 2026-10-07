@@ -10,6 +10,26 @@ changement de comportement à vérifier côté client.
 
 ---
 
+## 0.2.1 — Rappels fiables, fuseau horaire
+
+**Purement additif, aucun BC.**
+
+- **`GET/PATCH /api/me/settings/` → `timezone`** (IANA, ex. `Europe/Paris`,
+  `""` = inconnu → UTC serveur). Les clients le renseignent automatiquement ;
+  les heures « murales » (rappels d'habitude, futurs créneaux) s'y interprètent.
+  Valeur inconnue → 400.
+- **`GET /api/habits/` → `due_today`, `completed_today`** (lecture seule, « aujourd'hui »
+  au sens du fuseau de l'utilisateur).
+- **`POST /api/push/fcm-token/` → `local_reminders`** (booléen, défaut `false`) :
+  l'appareil programme ses rappels en local, le serveur ne les lui pousse plus
+  en FCM (pas de doublon). Les autres pushs FCM restent envoyés.
+- **Dispatch des rappels** : un rappel de tâche récurrente ou reportée est réarmé
+  pour la nouvelle échéance (il ne partait qu'une fois) ; un rappel de plus de
+  2 h de retard est marqué envoyé sans notifier ; un canal en échec ne bloque plus
+  les autres (cause des rappels « en boucle »). Le payload Web Push porte un `tag`.
+
+---
+
 ## 0.2.0 — Support natif de l'écosystème d'agents
 
 Cible : supprimer le polling 5 min et les contournements côté agent. **Aucun

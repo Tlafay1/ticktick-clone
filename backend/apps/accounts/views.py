@@ -108,7 +108,11 @@ class FCMTokenView(APIView):
         if not token:
             return Response({"detail": "Jeton manquant."}, status=400)
         FCMDevice.objects.update_or_create(
-            token=token, defaults={"user": request.user}
+            token=token,
+            defaults={
+                "user": request.user,
+                "local_reminders": bool(request.data.get("local_reminders")),
+            },
         )
         return Response(status=201)
 

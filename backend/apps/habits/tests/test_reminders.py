@@ -18,8 +18,8 @@ def pushes(monkeypatch):
     """Capture les notifications envoyées (web push + FCM neutralisés)."""
     calls = []
 
-    def fake_push(user, title, body, url):
-        calls.append({"user": user, "title": title, "body": body, "url": url})
+    def fake_push(user, title, body, url, tag="", reminder=False):
+        calls.append({"user": user, "title": title, "body": body, "url": url, "tag": tag})
 
     monkeypatch.setattr(habit_tasks, "notify_user", fake_push)
     monkeypatch.setattr(habit_tasks, "send_fcm", fake_push)
@@ -103,3 +103,35 @@ def test_interval_respects_days_since_last_checkin(user, pushes):
     HabitCheckIn.objects.filter(habit=habit).update(date=date.today() - timedelta(days=3))
     HabitReminder.objects.filter(habit=habit).update(last_sent_on=None)
     assert habit_tasks.dispatch_habit_reminders() == 1
+
+
+def test_reminder_time_is_wall_clock_in_user_timezone(user, pushes, monkeypatch):
+    """07:30 à Paris = 05:30 UTC : à 06:00 UTC le rappel est dû pour un Parisien."""
+    from datetime import datetime
+    from datetime import timezone as dt_tz
+
+    monkeypatch.setattr(
+        "django.utils.timezone.now", lambda: datetime(2026, 10, 7, 6, 0, tzinfo=dt_tz.utc)
+    )
+    habit = _habit(user)
+    HabitReminder.objects.create(habit=habit, time=time(7, 30))
+
+    user.settings.timezone = ""  # fuseau inconnu → UTC serveur : 06:00 < 07:30
+    user.settings.save()
+    assert habit_tasks.dispatch_habit_reminders() == 0
+
+    user.settings.timezone = "Europe/Paris"  # 08:00 locale ≥ 07:30
+    user.settings.save()
+    assert habit_tasks.dispatch_habit_reminders() == 1
+
+
+def test_habit_api_exposes_due_and_completed_today(api, user):
+    """L'app Android programme ses rappels d'habitude à partir de ces deux champs."""
+    habit = _habit(user)
+    data = api.get(f"/api/habits/{habit.id}/").json()
+    assert data["due_today"] is True
+    assert data["completed_today"] is False
+
+    HabitCheckIn.objects.create(habit=habit, date=timezone.localdate(), completed=True)
+    data = api.get(f"/api/habits/{habit.id}/").json()
+    assert data["completed_today"] is True

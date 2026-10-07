@@ -13,6 +13,7 @@ export interface UserSettings {
   nlp_strip_text: boolean
   daily_review_morning: string | null
   daily_review_evening: string | null
+  timezone: string
 }
 
 export interface User {
@@ -167,6 +168,8 @@ export interface Habit {
   reminders: Array<{ id: number; time: string }>
   streak: number
   max_streak: number
+  due_today: boolean
+  completed_today: boolean
 }
 
 export interface HabitCheckIn {

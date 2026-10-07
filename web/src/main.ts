@@ -16,13 +16,12 @@ try {
 
 createApp(App).use(createPinia()).use(router).mount('#app')
 
-// Contexte Capacitor (Android) : adaptateur natif + enregistrement FCM.
-// Imports dynamiques : jamais chargés sur le web.
+// Contexte Capacitor (Android) : adaptateur natif. Import dynamique : jamais
+// chargé sur le web. (FCM s'enregistre après connexion, cf. useReminderNotifications.)
 if ('Capacitor' in window) {
   Promise.all([import('./platform'), import('./platform/capacitor')])
     .then(([p, cap]) => p.setPlatform(cap.capacitorPlatform))
     .catch(() => {})
-  import('./lib/push').then(m => m.registerPush()).catch(() => {})
 }
 
 // Enregistre le service worker (PWA installable + réception Web Push).
