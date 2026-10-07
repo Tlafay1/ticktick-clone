@@ -52,6 +52,22 @@ export const capacitorPlatform: Platform = {
     })
   },
 
+  /** Écrit l'instantané du widget Android puis lui demande de se redessiner. */
+  async updateWidget(snapshot: string) {
+    const { Preferences } = await import('@capacitor/preferences')
+    await Preferences.set({ key: 'widget.snapshot', value: snapshot })
+    const { registerPlugin } = await import('@capacitor/core')
+    await registerPlugin<{ refresh(): Promise<void> }>('WidgetBridge').refresh()
+  },
+
+  /** Action déposée par un tap sur le widget (« start:<id> », « add »), consommée une fois. */
+  async consumeWidgetAction() {
+    const { Preferences } = await import('@capacitor/preferences')
+    const { value } = await Preferences.get({ key: 'widget.action' })
+    if (value) await Preferences.remove({ key: 'widget.action' })
+    return value
+  },
+
   store: {
     async get(key: string) {
       const { Preferences } = await import('@capacitor/preferences')

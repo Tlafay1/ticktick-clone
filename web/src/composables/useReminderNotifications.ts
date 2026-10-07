@@ -3,6 +3,8 @@ import { useRouter } from 'vue-router'
 import { habitsApi, methodApi, occurrencesApi, tasksApi } from '@/api'
 import { http } from '@/api/client'
 import { electronAPI } from '@/lib/electron'
+import { buildWidgetSnapshot, parseWidgetAction } from '@/lib/widget'
+import { pushToast } from '@/composables/useToast'
 import {
   nextReviewNotification, plannedHabitReminders, plannedSlotNotifications, plannedTaskReminders,
   type PlannedNotification,
@@ -130,11 +132,18 @@ export function useReminderNotifications() {
     const horizon = new Date(now.getTime() + NATIVE_HORIZON_DAYS * 86_400_000)
     const day = (d: Date) => d.toLocaleDateString('sv-SE') // AAAA-MM-JJ locale
     // Hors ligne : chaque source manquante est simplement ignorée.
-    const [habits, occurrences, config] = await Promise.all([
+    const [habits, occurrences, config, today] = await Promise.all([
       habitsApi.list().catch(() => []),
       occurrencesApi.list(day(now), day(horizon)).catch(() => []),
       methodApi.config().catch(() => null),
+      methodApi.today().catch(() => null),
     ])
+    const { capacitorPlatform } = await import('@/platform/capacitor')
+    // Le widget relit cet instantané sans réseau ; une panne ici ne doit pas priver
+    // des rappels programmés juste après.
+    await capacitorPlatform.updateWidget?.(
+      JSON.stringify(buildWidgetSnapshot(today, occurrences, tasks, now)),
+    ).catch(() => {})
     const planned = [
       ...plannedTaskReminders(tasks, now, horizon),
       ...plannedHabitReminders(habits, now, NATIVE_HORIZON_DAYS),
@@ -145,7 +154,6 @@ export function useReminderNotifications() {
     // Reprogrammer seulement si le plan a changé (évite de tout annuler chaque minute).
     const signature = JSON.stringify(planned.map(n => [n.id, n.at.getTime(), n.title]))
     if (signature === lastNativeSignature) return
-    const { capacitorPlatform } = await import('@/platform/capacitor')
     await capacitorPlatform.syncScheduledNotifications?.(planned.map(n => ({
       id: n.id, title: n.title, body: n.body, at: n.at, persistent: n.annoying, url: n.url,
     })))
@@ -188,13 +196,34 @@ export function useReminderNotifications() {
     }
   }
 
+  /** Geste fait sur le widget pendant que l'app dormait : on l'exécute maintenant. */
+  async function handleWidgetAction() {
+    const { capacitorPlatform } = await import('@/platform/capacitor')
+    const action = parseWidgetAction(await capacitorPlatform.consumeWidgetAction?.() ?? null)
+    if (action?.type === 'start') {
+      try {
+        await occurrencesApi.start(action.occurrence)
+        router.push('/focus')
+      } catch {
+        pushToast('Ce créneau ne se démarre plus — ouvre Aujourd\'hui.', 'info')
+        router.push('/today')
+      }
+    } else if (action?.type === 'add') {
+      await router.push('/today')
+      setTimeout(() => window.dispatchEvent(new CustomEvent('tt:focus-quickadd')), 300)
+    }
+  }
+
   // Retour au premier plan (Android) : resynchronise tout de suite.
   function onVisible() {
-    if (document.visibilityState === 'visible') check()
+    if (document.visibilityState !== 'visible') return
+    handleWidgetAction().catch(() => {})
+    check()
   }
 
   async function startNative() {
     const { capacitorPlatform } = await import('@/platform/capacitor')
+    handleWidgetAction().catch(() => {})  // l'app vient peut-être d'être lancée par le widget
     if (!(await capacitorPlatform.requestNotificationPermission())) return
     document.addEventListener('visibilitychange', onVisible)
     if (nativeListenersReady) return

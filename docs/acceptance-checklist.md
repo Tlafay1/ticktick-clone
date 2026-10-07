@@ -88,3 +88,4 @@ instrumentation) seulement si la régression devient coûteuse.
 - [ ] M37 — Journée rouge : les créneaux restants passent « Excusé (journée rouge) »
 - [ ] M41 — Dimanche 18:00 : notification de revue (web, desktop, Android) puis revue validée
 - [ ] M39 — Une proposition d'agent n'apparaît dans aucune liste avant « Accepter »
+- [ ] M36 — Widget « Prochaine action » : prochain créneau + 3 tâches du jour, « ▶ 10 min » démarre le créneau, « + » ouvre la saisie

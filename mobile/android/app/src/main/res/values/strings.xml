@@ -4,4 +4,6 @@
     <string name="title_activity_main">TickTick Clone</string>
     <string name="package_name">com.ticktick.clone</string>
     <string name="custom_url_scheme">com.ticktick.clone</string>
+    <string name="widget_today_label">Prochaine action</string>
+    <string name="widget_today_description">Le prochain créneau, à démarrer en un geste, et ta journée.</string>
 </resources>

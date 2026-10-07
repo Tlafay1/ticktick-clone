@@ -21,6 +21,10 @@ export interface Platform {
    * l'OS les déclenche même app fermée). Absent là où rien ne se programme.
    */
   syncScheduledNotifications?(items: NotificationOptions[]): Promise<void>
+  /** Widget d'écran d'accueil (Android) : instantané JSON (cf. lib/widget.ts). */
+  updateWidget?(snapshot: string): Promise<void>
+  /** Action déclenchée depuis le widget, lue une seule fois. */
+  consumeWidgetAction?(): Promise<string | null>
   /** Stockage clé/valeur persistant. */
   store: {
     get(key: string): Promise<string | null>

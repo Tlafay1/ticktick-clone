@@ -97,6 +97,36 @@ jobs:
       - name: Tests desktop (vitest)
         run: npx vitest run
 
+  # Le code natif (widget, pont Capacitor) ne se vérifie qu'en compilant : sans ce
+  # job, une erreur Java n'apparaissait qu'au moment de publier la release.
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build web
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Sync Capacitor
+        working-directory: mobile
+        run: |
+          npm ci
+          npx cap sync android
+      - name: Compiler l'APK (debug)
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -173,7 +203,7 @@ jobs:
   # appelle donc release.yml directement.
   version:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [backend, web, desktop, e2e]
+    needs: [backend, web, desktop, android, e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write
