@@ -187,7 +187,7 @@ class TestM36Slots:
         assert events.names().count("slot.missed") == 1
         assert occurrences(api)[0]["status"] == "missed"
 
-    def test_missed_slot_rolls_into_buffer_then_recovered(self, api, me, clock, objective):
+    def test_missed_slot_rolls_into_buffer_then_recovered(self, api, me, clock, objective, events):
         """Un raté est reporté au prochain tampon libre ; démarrer le tampon le
         marque rattrapé."""
         make_slot(api, weekday=0, start="20:30")
@@ -199,6 +199,10 @@ class TestM36Slots:
         buffer = next(o for o in week if o["kind"] == "buffer")
         assert missed["status"] == "missed"
         assert buffer["recovers"] == missed["id"]
+        # L'événement dit où le raté est reporté (« pas grave, dimanche 16 h »).
+        recovery = events.of("slot.missed")[0]["data"]["recovery"]
+        assert recovery == {"occurrence": buffer["id"], "date": "2026-10-18",
+                            "start_at": buffer["start_at"]}
 
         clock.at(18, 16, 0)
         res = api.post(f"/api/slot-occurrences/{buffer['id']}/start/", format="json")

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+from rest_framework.fields import DateTimeField
 
 from apps.accounts.models import UserSettings
 from apps.focus.models import FocusSession
@@ -225,12 +226,15 @@ def use_joker(occurrence):
 
 
 def _assign_recovery(missed):
-    """Report automatique au prochain tampon libre de la semaine (M36.6)."""
+    """Report automatique au prochain tampon libre de la semaine (M36.6).
+
+    Renvoie le tampon retenu (ou None) : l'événement `slot.missed` le mentionne
+    pour qu'on puisse dire « reporté à dimanche 16 h » plutôt que « raté »."""
     user = missed.user
     today = local_now(user).date()
     week_end = week_start_of(missed.date) + timedelta(days=6)
     if today > week_end:
-        return
+        return None
     ensure_occurrences(user, today, week_end)
     buffer = SlotOccurrence.objects.filter(
         user=user, kind=Slot.Kind.BUFFER, status=SlotOccurrence.Status.PLANNED,
@@ -239,6 +243,7 @@ def _assign_recovery(missed):
     if buffer is not None:
         buffer.recovers = missed
         buffer.save(update_fields=["recovers"])
+    return buffer
 
 
 # ---- Tick minute ---------------------------------------------------------------
@@ -275,8 +280,15 @@ def tick_user(user):
             else:
                 occ.status = SlotOccurrence.Status.MISSED
                 occ.save(update_fields=["status"])
-                emit(user, "slot.missed", serialize_occurrence(occ), actor=SYSTEM_ACTOR)
-                _assign_recovery(occ)
+                buffer = _assign_recovery(occ)
+                data = serialize_occurrence(occ)
+                data["recovery"] = (
+                    {"occurrence": buffer.id, "date": buffer.date.isoformat(),
+                     # Même format que les autres dates de l'API (DRF, « Z »).
+                     "start_at": DateTimeField().to_representation(buffer.start_at)}
+                    if buffer is not None else None
+                )
+                emit(user, "slot.missed", data, actor=SYSTEM_ACTOR)
             continue
         if occ.due_sent_at is None:
             occ.due_sent_at = now

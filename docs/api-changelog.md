@@ -51,7 +51,8 @@ les propositions sont exclues des listages par défaut (voir ci-dessous).
   **`tasks_done`**.
 
 ### Nouveaux événements webhook
-`slot.due`, `slot.nudge`, `slot.missed`, `slot.started` (payload = occurrence),
+`slot.due`, `slot.nudge`, `slot.missed`, `slot.started` (payload = occurrence ;
+`slot.missed` ajoute `recovery` = `{occurrence, date, start_at}` du tampon de report, ou `null`),
 `day.color` (`{date, color}`), `review.upcoming` / `review.due` (`{week_start, review_at}`),
 `review.completed` (bilan), `task.blocked` (tâche), `task.diagnosed` (`{task, reason,
 remedy}`). Acteur `system` pour ceux émis par le tick minute. Un webhook abonné à une
