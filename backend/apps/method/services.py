@@ -324,6 +324,10 @@ def _tick_review(user, config, now):
     moment = review_moment(user, config, week_start)
     if not (moment - REVIEW_UPCOMING <= now < moment + EVENT_STALE):
         return
+    # Pas de méthode, pas de revue : sans créneau, il n'y a rien à revoir (et on ne
+    # notifie pas un compte qui ne s'en sert pas).
+    if not Slot.objects.filter(user=user, created_at__lt=moment).exists():
+        return
     review, _ = WeeklyReview.objects.get_or_create(user=user, week_start=week_start)
     payload = {"week_start": week_start.isoformat(), "review_at": moment.isoformat()}
     if now < moment and review.upcoming_sent_at is None:

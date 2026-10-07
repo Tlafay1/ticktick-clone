@@ -455,6 +455,7 @@ class TestM41WeeklyReview:
         assert api.get("/api/method/review/").json()["suggestion"] == "up"
 
     def test_review_events_upcoming_then_due(self, api, me, clock, events):
+        make_slot(api, weekday=0)
         clock.at(18, 16, 0)  # dimanche, revue à 18:00
         tick()
         tick()
@@ -464,3 +465,9 @@ class TestM41WeeklyReview:
         tick()
         tick()
         assert events.names().count("review.due") == 1
+
+    def test_no_review_events_without_any_slot(self, api, me, clock, events):
+        """Sans créneau, pas de méthode : aucun rendez-vous de revue n'est émis."""
+        clock.at(18, 18, 0)
+        tick()
+        assert "review.due" not in events.names()
