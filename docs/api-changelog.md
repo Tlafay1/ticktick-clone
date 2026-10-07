@@ -55,8 +55,9 @@ les propositions sont exclues des listages par défaut (voir ci-dessous).
 `slot.missed` ajoute `recovery` = `{occurrence, date, start_at}` du tampon de report, ou `null`),
 `day.color` (`{date, color}`), `review.upcoming` / `review.due` (`{week_start, review_at}`),
 `review.completed` (bilan), `task.blocked` (tâche), `task.diagnosed` (`{task, reason,
-remedy}`). Acteur `system` pour ceux émis par le tick minute. Un webhook abonné à une
-liste explicite d'événements doit les ajouter pour les recevoir.
+remedy}`). Acteur `system` pour ceux émis par le tick minute. Un webhook déjà abonné
+à des événements `task.*` (liste explicite) reçoit d'office ces nouveaux événements
+(migration `webhooks.0003`) ; « tous » reste « tous ».
 
 ---
 
