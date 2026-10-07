@@ -8,6 +8,7 @@ import { tokens } from '@/api/client'
 import { electronAPI } from '@/lib/electron'
 import { tasksApi } from '@/api'
 import { pushToast } from '@/composables/useToast'
+import { watchAppUpdates } from '@/composables/useAppUpdate'
 
 useKeyboardShortcuts()
 
@@ -16,6 +17,7 @@ useKeyboardShortcuts()
 const userStore = useUserStore()
 onMounted(() => {
   if (tokens.access && !userStore.user) userStore.load()
+  watchAppUpdates()
 
   // Bouton « Terminer » des notifications natives Electron.
   electronAPI()?.onNotificationAction(async ({ id, action }) => {

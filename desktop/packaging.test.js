@@ -62,3 +62,12 @@ describe('contenu du paquet', () => {
     }
   })
 })
+
+describe('mises à jour automatiques', () => {
+  // L'app ne quitte jamais (tray) : sans installation explicite, une mise à jour
+  // téléchargée attendait indéfiniment un redémarrage qui ne venait pas.
+  it('installe la mise à jour téléchargée quand l\'app est inactive', () => {
+    expect(mainSrc).toMatch(/autoUpdater\.on\('update-downloaded'/)
+    expect(mainSrc).toMatch(/autoUpdater\.quitAndInstall\(true, true\)/)
+  })
+})

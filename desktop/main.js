@@ -157,7 +157,26 @@ ipcMain.handle('store-set', (_e, key, value) => store.set(key, value))
 ipcMain.handle('store-remove', (_e, key) => store.delete(key))
 
 // Mise à jour du tray depuis le renderer
-ipcMain.on('tray-update', (_e, data) => updateTrayMenu(data.todayCount, data.focusLabel))
+ipcMain.on('tray-update', (_e, data) => {
+  focusRunning = Boolean(data.focusLabel)
+  updateTrayMenu(data.todayCount, data.focusLabel)
+  installUpdateIfIdle()
+})
+
+// ── Mises à jour ──────────────────────────────────────────────────────────────
+// L'app vit dans le tray et ne « quitte » presque jamais : l'installation « au
+// prochain redémarrage » d'electron-updater n'arrivait donc jamais. On applique
+// la mise à jour téléchargée dès que personne ne regarde (fenêtre masquée, pas
+// de session focus en cours), en silencieux, et l'app se relance d'elle-même.
+
+let updateReady = false
+let focusRunning = false
+
+function installUpdateIfIdle() {
+  if (!updateReady || focusRunning || !mainWindow || mainWindow.isVisible()) return
+  app.isQuitting = true
+  autoUpdater.quitAndInstall(true, true)
+}
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
@@ -195,9 +214,15 @@ app.whenReady().then(async () => {
   }
 
   // Mises à jour automatiques depuis les GitHub Releases (electron-updater) :
-  // vérifie au lancement puis toutes les 4 h ; notifie, télécharge en fond et
-  // installe au prochain redémarrage. Silencieux hors-ligne ou en dev.
+  // vérifie au lancement puis toutes les 4 h ; télécharge en fond et installe
+  // dès que l'app est inactive (cf. installUpdateIfIdle). Silencieux hors-ligne
+  // ou en dev.
   if (app.isPackaged) {
+    autoUpdater.on('update-downloaded', () => {
+      updateReady = true
+      installUpdateIfIdle()
+    })
+    mainWindow.on('hide', installUpdateIfIdle)
     const checkUpdates = () => autoUpdater.checkForUpdatesAndNotify().catch(() => {})
     checkUpdates()
     setInterval(checkUpdates, 4 * 3_600_000)

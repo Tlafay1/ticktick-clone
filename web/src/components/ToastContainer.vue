@@ -15,6 +15,11 @@ const { toasts, removeToast } = useToast()
         @click="removeToast(t.id)"
       >
         {{ t.message }}
+        <button
+          v-if="t.action"
+          class="toast-action"
+          @click.stop="t.action.run(); removeToast(t.id)"
+        >{{ t.action.label }}</button>
       </div>
     </TransitionGroup>
   </div>
@@ -37,6 +42,16 @@ const { toasts, removeToast } = useToast()
   font-size: 13px;
   color: #fff;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+.toast-action {
+  margin-left: 10px;
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  background: transparent;
+  color: #fff;
+  font: inherit;
   cursor: pointer;
 }
 .toast.error { background: var(--danger); }

@@ -161,3 +161,49 @@ jobs:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 7
+
+  # Release continue : chaque push sur main qui touche un client (web, desktop,
+  # mobile) publie une version patch, et desktop comme Android se mettent à jour
+  # seuls. Un tag poussé avec GITHUB_TOKEN ne déclenche aucun workflow : on
+  # appelle donc release.yml directement.
+  version:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, web, desktop, e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag de la version suivante (si un client a changé)
+        id: next
+        run: |
+          LAST=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          if [ -n "$LAST" ] && git diff --quiet "$LAST" HEAD -- web desktop mobile; then
+            echo "Aucun client modifié depuis $LAST : pas de release."
+            exit 0
+          fi
+          IFS=. read -r MAJ MIN PAT <<< "${LAST#v}"
+          PAT=$(( ${PAT:-0} + 1 ))
+          # versionCode Android = MAJ*10000 + MIN*100 + PAT : le patch ne doit
+          # jamais atteindre 100 (0.2.100 collisionnerait avec 0.3.0).
+          if [ "$PAT" -ge 100 ]; then MIN=$(( ${MIN:-0} + 1 )); PAT=0; fi
+          TAG="v${MAJ:-0}.${MIN:-0}.${PAT}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: version
+    if: needs.version.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+    secrets: inherit

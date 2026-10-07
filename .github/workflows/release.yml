@@ -1,14 +1,24 @@
-# Release : sur tag v*, builde l'installeur Windows (electron-builder → publie
-# exe + latest.yml pour electron-updater) et l'APK Android (signé si la
-# keystore est fournie en secrets, debug sinon), attachés à la GitHub Release.
+# Release : sur tag v* (ou appelée par la CI après un push sur main, cf. ci.yml),
+# builde l'installeur Windows (electron-builder → publie exe + latest.yml pour
+# electron-updater) et l'APK Android (signé si la keystore est fournie en
+# secrets, debug sinon), attachés à la GitHub Release.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  # Tag poussé à la main, ou version calculée par la release continue de la CI.
+  TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   create-release:
@@ -18,7 +28,7 @@ jobs:
       - name: Créer la release (idempotent)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || true
+        run: gh release create "$TAG" --title "$TAG" --generate-notes || true
 
   desktop-windows:
     needs: create-release
@@ -28,6 +38,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -47,7 +59,7 @@ jobs:
         run: |
           npm ci
           # Version de l'app = tag (electron-updater compare ce champ)
-          npm version --no-git-tag-version "${GITHUB_REF_NAME#v}"
+          npm version --no-git-tag-version "${TAG#v}"
           npx electron-builder --win --publish always
 
   android:
@@ -55,6 +67,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -69,7 +83,8 @@ jobs:
         working-directory: web
         run: |
           npm ci
-          npm run build
+          # Version embarquée : l'app la compare à la dernière release (useAppUpdate).
+          APP_VERSION="${TAG#v}" npm run build
 
       - name: Sync Capacitor
         working-directory: mobile
@@ -90,7 +105,7 @@ jobs:
       - name: Versionner l'APK depuis le tag
         working-directory: mobile/android
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           # versionCode dérivé du tag : monotone d'une release à l'autre, alors
           # que github.run_number repart à 1 si le workflow est recréé — Android
           # refuse alors définitivement la mise à jour ("app not installed").
@@ -126,15 +141,15 @@ jobs:
             "$BUILD_TOOLS/apksigner" sign \
               --ks release.jks --ks-pass "pass:$KEYSTORE_PASSWORD" \
               --ks-key-alias "$KEY_ALIAS" --key-pass "pass:$KEY_PASSWORD" \
-              --out "ticktick-clone-$GITHUB_REF_NAME.apk" aligned.apk
+              --out "ticktick-clone-$TAG.apk" aligned.apk
           else
             echo "::warning::Pas de keystore (ANDROID_KEYSTORE_BASE64) : APK signé debug."
             ./gradlew assembleDebug --no-daemon
-            cp app/build/outputs/apk/debug/app-debug.apk "ticktick-clone-$GITHUB_REF_NAME-debug.apk"
+            cp app/build/outputs/apk/debug/app-debug.apk "ticktick-clone-$TAG-debug.apk"
           fi
 
       - name: Attacher l'APK à la release
         working-directory: mobile/android
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" ticktick-clone-*.apk --clobber
+        run: gh release upload "$TAG" ticktick-clone-*.apk --clobber

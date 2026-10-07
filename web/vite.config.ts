@@ -4,6 +4,11 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [vue()],
+  define: {
+    // Version des builds de release (tag sans « v ») : l'app Android la compare
+    // à la dernière release GitHub pour proposer la mise à jour.
+    __APP_VERSION__: JSON.stringify(process.env.APP_VERSION ?? ''),
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
