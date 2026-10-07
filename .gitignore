@@ -59,3 +59,8 @@ scripts/logs/
 mobile/android/app/src/main/assets/public/
 mobile/android/app/src/main/assets/capacitor.plugins.json
 mobile/android/capacitor-cordova-android-plugins/
+
+# Clés de signature Android : jamais dans le dépôt (public).
+*.jks
+*.jks.b64
+*.keystore
