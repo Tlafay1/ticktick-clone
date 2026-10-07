@@ -10,6 +10,55 @@ changement de comportement à vérifier côté client.
 
 ---
 
+## 0.3.0 — Méthode d'organisation (créneaux, revue, propositions)
+
+Cf. [requirements/modules-36-41.md](requirements/modules-36-41.md). **Un BC** :
+les propositions sont exclues des listages par défaut (voir ci-dessous).
+
+### Créneaux (M36)
+- **`/api/slots/`** (CRUD) : `{weekday (lundi=0), start_time, duration_minutes (25),
+  project|null (null = objectif actif auto), kind: work|buffer}`.
+- **`GET /api/slot-occurrences/?start=&end=`** (défaut : semaine courante) :
+  `{id, slot, date, start_at, end_at, kind, status (planned|honored|missed|excused|
+  recovered|free), excuse_reason (joker|rouge|pause), task, next_action {id,title,project}|null,
+  started_at, focus_session, recovers}`. **`PATCH {task}`** pré-planifie la tâche d'une occurrence.
+- **`POST …/{id}/start/`** `{task?, minutes?}` : honore + focus de 10 min (contrat) ;
+  rattache la session focus déjà en cours s'il y en a une. 400 hors du jour / > 1 h d'avance.
+- **`POST …/{id}/joker/`** : excuse sans pénalité, quota mensuel (400 « Plus de joker ce mois-ci »).
+
+### Jour, réglages, revue (M37, M41)
+- **`GET/PATCH /api/method/config/`** : `level, jokers_per_month, today_limit,
+  review_weekday, review_time, pause_until`.
+- **`GET /api/method/today/`** : couleur, pause, niveau, `today_count`/`today_limit`,
+  jokers restants, `proposals_count`, occurrences du jour (avec `next_action`).
+- **`PUT /api/method/day/`** `{color: green|orange|red, date?}`.
+- **`GET /api/method/review/?week=`** : bilan (score `{honored, decided, rate}`,
+  occurrences, `completed`, `focus_minutes`, `blocked`, `amnesty`, `inbox_count`,
+  `proposals_count`, `day_colors`, `jokers_remaining`, `level`, `suggestion` up|down|keep,
+  `completed_at`). Sans `week` : la dernière revue arrivée (ou dans les 2 h).
+- **`POST /api/method/review/`** `{week?, level?, amnesty=true, notes?}` : amnistie les
+  retards > 7 j (échéance retirée, pas compté comme report), fixe le niveau, fige le
+  score. Idempotent par semaine.
+
+### Tâches & listes (M38–M40)
+- Tâche : **`proposed`** (écrivable), **`postpone_count`**, **`blocker`** (lecture seule).
+- ⚠️ **BC** : `GET /api/tasks/` **exclut les propositions** (`proposed=true`) ; `?proposed=1`
+  ne liste qu'elles. Exclues aussi de `today`, `density`, des prochaines actions. Accepter
+  = `PATCH {proposed: false}` ; refuser = `DELETE ?permanent=1`.
+- `?blocked=1` : tâches reportées 3 fois. **`POST /api/tasks/{id}/diagnose/`**
+  `{reason: boring|unclear|too_big|unpleasant|useless}` → `{task, remedy}`.
+- Liste : **`objective`** (`""`|`active`|`fridge`, 2 actifs max → 400), **`tasks_total`**,
+  **`tasks_done`**.
+
+### Nouveaux événements webhook
+`slot.due`, `slot.nudge`, `slot.missed`, `slot.started` (payload = occurrence),
+`day.color` (`{date, color}`), `review.upcoming` / `review.due` (`{week_start, review_at}`),
+`review.completed` (bilan), `task.blocked` (tâche), `task.diagnosed` (`{task, reason,
+remedy}`). Acteur `system` pour ceux émis par le tick minute. Un webhook abonné à une
+liste explicite d'événements doit les ajouter pour les recevoir.
+
+---
+
 ## 0.2.1 — Rappels fiables, fuseau horaire
 
 **Purement additif, aucun BC.**

@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.countdown",
     "apps.sync",
     "apps.webhooks",
+    "apps.method",
     "channels",
 ]
 
@@ -158,7 +159,7 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     "TITLE": "TickTick Clone API",
     "DESCRIPTION": "API REST ouverte du clone TickTick self-hosted.",
-    "VERSION": "0.2.1",
+    "VERSION": "0.3.0",
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
@@ -201,6 +202,10 @@ CELERY_BEAT_SCHEDULE = {
     "purge-expired-trash": {
         "task": "apps.tasks.tasks.purge_expired_trash",
         "schedule": 3600.0,  # toutes les heures
+    },
+    "method-tick": {
+        "task": "apps.method.tasks.tick",
+        "schedule": 60.0,  # relances de créneaux, ratés, rendez-vous de revue
     },
     "refresh-ics-subscriptions": {
         "task": "apps.calendars.tasks.refresh_ics_subscriptions",

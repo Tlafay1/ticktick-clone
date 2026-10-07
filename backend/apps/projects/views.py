@@ -1,3 +1,4 @@
+from django.db.models import Count, Q
 from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
@@ -25,6 +26,17 @@ class ProjectGroupViewSet(OwnedModelViewSet):
 class ProjectViewSet(OwnedModelViewSet):
     serializer_class = ProjectSerializer
     queryset = Project.objects.all()
+
+    def get_queryset(self):
+        from apps.tasks.models import Task
+
+        # Progression (M38.2) en une requête plutôt que deux COUNT par liste.
+        live = Q(tasks__trashed_at__isnull=True, tasks__archived_at__isnull=True,
+                 tasks__proposed=False)
+        return super().get_queryset().annotate(
+            n_done=Count("tasks", filter=live & Q(tasks__status=Task.Status.COMPLETED)),
+            n_open=Count("tasks", filter=live & Q(tasks__status=Task.Status.NORMAL)),
+        )
 
     def _emit(self, event, project):
         from apps.webhooks.dispatch import emit

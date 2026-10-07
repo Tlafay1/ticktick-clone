@@ -6,6 +6,7 @@ clone le dépôt doit pouvoir tout implémenter à partir de ces fichiers + des 
 
 - [modules-01-12.md](modules-01-12.md) — modules 1 à 12 (cœur, listes, tags, calendrier, kanban, habitudes, focus, collab*, saisie/recherche, plateformes, compte/sync).
 - [modules-13-18.md](modules-13-18.md) — modules 13 à 18 (absents du PRD d'origine, comblés : Eisenhower, Won't Do, Annoying Alert, durée, Summary, Countdown).
+- [modules-36-41.md](modules-36-41.md) — modules 36 à 41 (méthode d'organisation : créneaux, couleur du jour, objectifs, propositions IA, retard, revue hebdo).
 - [modules-19-35.md](modules-19-35.md) — modules 19 à 35 (vues 8.0, capture, tracking avancé, focus strict, templates, migration, comportements granulaires, notifications, historique/print, règles habitudes, interruptions focus, capture spatiale, checklists, annotation image, commentaires, intégrations*, countdown notes).
 
 `*` partiellement ou totalement coupé — voir « Décisions globales » ci-dessous.
@@ -59,4 +60,5 @@ Chaque module liste des **exigences sous forme de critères d'acceptation testab
 | 11.1, 21.3, 22, 30.1, 30.3, 1.1 (géo) | 6 | `backend/spec/test_jalon6_android.py` + checklist |
 | 11.2, 27.2 | 7 | `backend/spec/test_jalon7_windows.py` + checklist |
 | 12.2, 19.2 (fonds) | 8 | `backend/spec/test_jalon8_polish.py` |
+| 36, 37, 38, 39, 40, 41 | 9 | `backend/spec/test_jalon9_methode.py` |
 | Tout le périmètre coupé | — | `backend/spec/test_scope_cuts.py` |

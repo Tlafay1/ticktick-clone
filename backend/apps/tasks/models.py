@@ -6,6 +6,7 @@ from django.utils import timezone
 
 TRASH_RETENTION_DAYS = 30
 MAX_SUBTASK_DEPTH = 5  # profondeur max d'imbrication des sous-tâches (Tier 1)
+POSTPONE_THRESHOLD = 3  # M40 : au 3e report, la tâche est bloquée (diagnostic)
 
 
 class TaskQuerySet(models.QuerySet):
@@ -18,6 +19,16 @@ class TaskQuerySet(models.QuerySet):
     def visible_in_smart_lists(self):
         """Exclut les tâches des listes masquées (module 25.2)."""
         return self.filter(project__hidden_from_smart_lists=False)
+
+
+class Blocker(models.TextChoices):
+    """Raisons d'une procrastination (diagnostic M40.3)."""
+
+    BORING = "boring", "Ennuyeuse"
+    UNCLEAR = "unclear", "Floue"
+    TOO_BIG = "too_big", "Trop grosse"
+    UNPLEASANT = "unpleasant", "Désagréable"
+    USELESS = "useless", "Plus utile"
 
 
 class Task(models.Model):
@@ -89,6 +100,11 @@ class Task(models.Model):
     trashed_at = models.DateTimeField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
     estimated_pomos = models.PositiveSmallIntegerField(default=0)  # estimation Pomodoro (M21.2)
+    # M39 : proposition (d'un agent) en attente de validation — hors des vues.
+    proposed = models.BooleanField(default=False)
+    # M40 : reports d'une échéance arrivée ; bloquée au seuil, puis diagnostic.
+    postpone_count = models.PositiveSmallIntegerField(default=0)
+    blocker = models.CharField(max_length=12, choices=Blocker, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
 

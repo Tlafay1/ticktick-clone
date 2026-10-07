@@ -28,6 +28,17 @@ class Webhook(models.Model):
         "pomodoro.started",
         "pomodoro.stopped",
         "pomodoro.completed",
+        # Méthode (modules 36 à 41)
+        "slot.due",
+        "slot.nudge",
+        "slot.missed",
+        "slot.started",
+        "day.color",
+        "review.upcoming",
+        "review.due",
+        "review.completed",
+        "task.blocked",
+        "task.diagnosed",
     ]
 
     user = models.ForeignKey(

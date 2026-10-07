@@ -19,6 +19,14 @@ class ProjectGroup(models.Model):
         return self.name
 
 
+class Objective(models.TextChoices):
+    ACTIVE = "active", "Objectif actif"
+    FRIDGE = "fridge", "Au frigo"
+
+
+MAX_ACTIVE_OBJECTIVES = 2
+
+
 class Project(models.Model):
     """Une « liste » TickTick."""
 
@@ -49,6 +57,8 @@ class Project(models.Model):
     grouping = models.CharField(max_length=50, null=True, blank=True)
     sorting = models.CharField(max_length=50, null=True, blank=True)
     bg_color = models.CharField(max_length=32, blank=True)
+    # Méthode (M38) : objectif actif (2 au plus) ou rangé au frigo.
+    objective = models.CharField(max_length=8, choices=Objective, blank=True, default="")
     bg_image_url = models.CharField(max_length=500, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)

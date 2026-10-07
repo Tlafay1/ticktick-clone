@@ -4,7 +4,7 @@ from apps.tags.models import Tag
 from apps.projects.models import Project
 
 from .models import (
-    MAX_SUBTASK_DEPTH, ActivityLog, Attachment, CheckItem, Comment,
+    MAX_SUBTASK_DEPTH, POSTPONE_THRESHOLD, ActivityLog, Attachment, CheckItem, Comment,
     Reminder, SearchHistory, Task, TaskVersion, Template,
 )
 
@@ -154,10 +154,11 @@ class TaskSerializer(serializers.ModelSerializer):
             "rrule", "repeat_from", "tags", "sort_order",
             "completed_at", "trashed_at", "archived_at", "created_at", "modified_at",
             "check_items", "reminders", "estimated_pomos", "last_actor", "claimed_by",
+            "proposed", "postpone_count", "blocker",
         ]
         read_only_fields = [
             "completed_at", "trashed_at", "archived_at", "pinned_at", "created_at",
-            "modified_at", "last_actor",
+            "modified_at", "last_actor", "postpone_count", "blocker",
         ]
 
     def validate_project(self, project):
@@ -232,6 +233,26 @@ class TaskSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         return get_actor(request) if request else "user"
 
+    def _count_postpone(self, instance, new_due):
+        """M40.1 : repousser (ou retirer) une échéance arrivée est un report.
+
+        Arrivée = due aujourd'hui ou en retard, au sens du fuseau de
+        l'utilisateur ; replanifier une tâche future n'en est pas un.
+        """
+        from django.utils import timezone
+
+        from apps.accounts.models import UserSettings
+
+        old_due = instance.due_date
+        if old_due is None or (new_due is not None and new_due <= old_due):
+            return
+        tz = UserSettings.objects.get_or_create(user=instance.user)[0].tzinfo
+        if old_due.astimezone(tz).date() > timezone.now().astimezone(tz).date():
+            return
+        instance.postpone_count += 1
+        # Seuil franchi : la vue émet `task.blocked` (une seule fois).
+        instance._became_blocked = instance.postpone_count == POSTPONE_THRESHOLD
+
     def update(self, instance, validated_data):
         from django.utils import timezone
 
@@ -250,6 +271,8 @@ class TaskSerializer(serializers.ModelSerializer):
             if f in tracked and getattr(instance, f) != v
         )
         due_changed = "due_date" in changed
+        if "due_date" in validated_data:
+            self._count_postpone(instance, validated_data["due_date"])
         task = super().update(instance, validated_data)
         actor = validated_data["last_actor"]
         if reminders_data is not None:

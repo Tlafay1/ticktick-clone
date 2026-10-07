@@ -21,7 +21,7 @@ from apps.projects.views import OwnedModelViewSet
 
 from .ticktick_import import import_ticktick_csv, looks_like_ticktick_csv
 from .models import (
-    Attachment, CheckItem, Comment, Reminder, SearchHistory,
+    POSTPONE_THRESHOLD, Attachment, CheckItem, Comment, Reminder, SearchHistory,
     Task, TaskVersion, Template,
 )
 from .serializers import (
@@ -147,6 +147,13 @@ class TaskViewSet(OwnedModelViewSet):
         # ?overdue=1 : échéance passée ET tâche encore active (en retard).
         if params.get("overdue") in ("1", "true"):
             qs = qs.filter(due_date__lt=timezone.now(), status=Task.Status.NORMAL)
+        # M39 : les propositions d'agent restent hors des listages tant qu'elles ne
+        # sont pas validées ; ?proposed=1 ne montre qu'elles.
+        if self.action == "list":
+            qs = qs.filter(proposed=params.get("proposed") in ("1", "true"))
+        # M40 : ?blocked=1 → tâches reportées jusqu'au seuil, à diagnostiquer.
+        if params.get("blocked") in ("1", "true"):
+            qs = qs.filter(postpone_count__gte=POSTPONE_THRESHOLD, status=Task.Status.NORMAL)
         return qs
 
     # ----- Webhooks -----
@@ -171,6 +178,12 @@ class TaskViewSet(OwnedModelViewSet):
         # Revendication d'une tâche par un agent : "" → renseigné.
         if not was_claimed and serializer.instance.claimed_by:
             self._emit("task.claimed", serializer.instance)
+        self._emit_if_blocked(serializer.instance)
+
+    def _emit_if_blocked(self, task):
+        """M40.2 : le report qui atteint le seuil signale la tâche bloquée."""
+        if getattr(task, "_became_blocked", False):
+            self._emit("task.blocked", task)
 
     # ----- Transitions -----
 
@@ -180,6 +193,22 @@ class TaskViewSet(OwnedModelViewSet):
         task.set_status(Task.Status.COMPLETED, actor=get_actor(request))
         self._emit("task.completed", task)
         return Response(self.get_serializer(task).data)
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses=OpenApiTypes.OBJECT)
+    @action(detail=True, methods=["post"])
+    def diagnose(self, request, pk=None):
+        """M40.3 : {reason} → remède concret. `useless` abandonne la tâche."""
+        from apps.method.services import diagnose
+
+        task = self.get_object()
+        reason = request.data.get("reason")
+        remedy = diagnose(task, reason, actor=get_actor(request))
+        data = self.get_serializer(task).data
+        from apps.webhooks.dispatch import emit
+
+        emit(request.user, "task.diagnosed", {"task": data, "reason": reason, "remedy": remedy},
+             actor=get_actor(request))
+        return Response({"task": data, "remedy": remedy})
 
     @action(detail=True, methods=["post"], url_path="wont-do")
     def wont_do(self, request, pk=None):
@@ -247,8 +276,9 @@ class TaskViewSet(OwnedModelViewSet):
     # ----- Vues agrégées pour agents -----
 
     def _active(self):
-        """Tâches actives, non archivées, hors corbeille (base des vues agrégées)."""
-        return self.get_queryset().active().filter(archived_at__isnull=True)
+        """Tâches actives, non archivées, hors corbeille et hors propositions
+        (base des vues agrégées)."""
+        return self.get_queryset().active().filter(archived_at__isnull=True, proposed=False)
 
     @extend_schema(
         parameters=[OpenApiParameter("tz", str, description="Fuseau (ex. Europe/Paris) ; défaut UTC.")],
@@ -360,6 +390,7 @@ class TaskViewSet(OwnedModelViewSet):
                     after = self.get_serializer(serializer.instance).data
                     self._emit("task.updated", serializer.instance,
                                changes=_diff(before, after))
+                    self._emit_if_blocked(serializer.instance)
                 results.append({"id": task_id, "ok": True})
             except Exception as exc:  # erreur par item, on continue
                 detail = exc.detail if hasattr(exc, "detail") else str(exc)
