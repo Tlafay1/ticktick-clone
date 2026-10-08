@@ -1,10 +1,11 @@
-import { onUnmounted } from 'vue'
+import { onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { habitsApi, methodApi, occurrencesApi, tasksApi } from '@/api'
 import { http } from '@/api/client'
 import { electronAPI } from '@/lib/electron'
 import { buildWidgetSnapshot, parseWidgetAction } from '@/lib/widget'
 import { pushToast } from '@/composables/useToast'
+import { useUserStore } from '@/stores/user'
 import {
   nextReviewNotification, plannedHabitReminders, plannedSlotNotifications, plannedTaskReminders,
   type PlannedNotification,
@@ -45,6 +46,7 @@ let nativeListenersReady = false
 
 export function useReminderNotifications() {
   const router = useRouter()
+  const userStore = useUserStore()
   let timer: ReturnType<typeof setInterval> | null = null
   let stopped = false
   let lastNativeSignature = ''
@@ -142,7 +144,7 @@ export function useReminderNotifications() {
     // Le widget relit cet instantané sans réseau ; une panne ici ne doit pas priver
     // des rappels programmés juste après.
     await capacitorPlatform.updateWidget?.(
-      JSON.stringify(buildWidgetSnapshot(today, occurrences, tasks, now)),
+      JSON.stringify(buildWidgetSnapshot(today, occurrences, tasks, now, userStore.theme)),
     ).catch(() => {})
     const planned = [
       ...plannedTaskReminders(tasks, now, horizon),
@@ -268,6 +270,9 @@ export function useReminderNotifications() {
     for (const tag of [...repeats.keys()]) stopRepeat(tag)
     if (isNative()) document.removeEventListener('visibilitychange', onVisible)
   }
+
+  // Le widget suit le thème de l'app : un changement le redessine aussitôt.
+  watch(() => userStore.theme, () => { if (isNative() && !stopped) check() })
 
   onUnmounted(stop)
 

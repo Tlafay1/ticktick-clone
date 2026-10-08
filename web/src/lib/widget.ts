@@ -6,6 +6,8 @@ import type { DayColor, MethodToday, OccurrenceStatus, SlotOccurrence, Task } fr
 
 export interface WidgetSnapshot {
   updated_at: number
+  /** Thème choisi dans l'app : « auto » suit le mode sombre du téléphone. */
+  theme: 'auto' | 'light' | 'dark'
   color: DayColor | null
   today_count: number
   today_limit: number
@@ -29,6 +31,7 @@ export function buildWidgetSnapshot(
   occurrences: SlotOccurrence[],
   tasks: Task[],
   now: Date,
+  theme: WidgetSnapshot['theme'] = 'auto',
 ): WidgetSnapshot {
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
   const todays = tasks
@@ -52,6 +55,7 @@ export function buildWidgetSnapshot(
     }))
   return {
     updated_at: now.getTime(),
+    theme,
     color: today?.color ?? null,
     today_count: today?.today_count ?? todays.length,
     today_limit: today?.today_limit ?? 3,

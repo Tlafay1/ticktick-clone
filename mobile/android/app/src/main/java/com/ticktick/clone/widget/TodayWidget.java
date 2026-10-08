@@ -74,6 +74,7 @@ public class TodayWidget extends AppWidgetProvider {
             return views;
         }
 
+        applyTheme(views, snapshot.optString("theme", "auto"));
         views.setTextViewText(R.id.widget_header, header(snapshot));
 
         JSONObject slot = nextSlot(snapshot.optJSONArray("slots"), now);
@@ -95,6 +96,23 @@ public class TodayWidget extends AppWidgetProvider {
 
         views.setTextViewText(R.id.widget_tasks, tasks(snapshot.optJSONArray("tasks")));
         return views;
+    }
+
+    /**
+     * Thème choisi dans l'app. « auto » : rien à forcer, les ressources values-night
+     * suivent le mode sombre du téléphone (et changent avec lui, sans redessin).
+     * « light » / « dark » : l'app a tranché, le widget suit l'app.
+     */
+    static void applyTheme(RemoteViews views, String theme) {
+        if (!"light".equals(theme) && !"dark".equals(theme)) return;
+        boolean dark = "dark".equals(theme);
+        views.setInt(R.id.widget_root, "setBackgroundResource",
+                dark ? R.drawable.widget_background_dark : R.drawable.widget_background_light);
+        int text = dark ? 0xFFD6D6D6 : 0xFF202329;
+        int secondary = dark ? 0xFF9A9A9A : 0xFF6B6F76;
+        views.setTextColor(R.id.widget_header, text);
+        views.setTextColor(R.id.widget_slot, text);
+        views.setTextColor(R.id.widget_tasks, secondary);
     }
 
     private static JSONObject readSnapshot(Context context) {

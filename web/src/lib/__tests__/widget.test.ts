@@ -45,6 +45,11 @@ describe('buildWidgetSnapshot', () => {
     expect(snap.today_count).toBe(2)
   })
 
+  it('transmet le thème choisi dans l\'app (auto par défaut)', () => {
+    expect(buildWidgetSnapshot(null, [], [], NOW).theme).toBe('auto')
+    expect(buildWidgetSnapshot(null, [], [], NOW, 'dark').theme).toBe('dark')
+  })
+
   it('reprend la couleur et la limite du tableau de bord quand il est là', () => {
     const today = { color: 'orange', today_count: 4, today_limit: 3 } as MethodToday
     const snap = buildWidgetSnapshot(today, [], [], NOW)

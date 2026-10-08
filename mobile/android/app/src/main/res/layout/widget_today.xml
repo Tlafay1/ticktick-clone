@@ -20,7 +20,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Aujourd'hui"
-            android:textColor="#202329"
+            android:textColor="@color/widget_text"
             android:textSize="13sp"
             android:textStyle="bold" />
 
@@ -49,7 +49,7 @@
             android:layout_weight="1"
             android:ellipsize="end"
             android:maxLines="2"
-            android:textColor="#202329"
+            android:textColor="@color/widget_text"
             android:textSize="14sp" />
 
         <TextView
@@ -74,6 +74,6 @@
         android:layout_marginTop="8dp"
         android:ellipsize="end"
         android:maxLines="3"
-        android:textColor="#6B6F76"
+        android:textColor="@color/widget_text_secondary"
         android:textSize="13sp" />
 </LinearLayout>
