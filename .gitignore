@@ -64,6 +64,3 @@ mobile/android/capacitor-cordova-android-plugins/
 *.jks
 *.jks.b64
 *.keystore
-
-# Données personnelles (plan de la méthode…) : jamais dans le dépôt public.
-perso/
